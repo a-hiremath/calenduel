@@ -31,6 +31,7 @@ function SessionCard({ session, onDeleted }: { session: SessionMeta; onDeleted: 
   const [playing, setPlaying] = useState(false)
   const [clipUrl, setClipUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
     return () => { if (clipUrl) URL.revokeObjectURL(clipUrl) }
@@ -57,6 +58,16 @@ function SessionCard({ session, onDeleted }: { session: SessionMeta; onDeleted: 
   }
 
   async function handleDelete() {
+    setDeleteError(null)
+    // Server first: if this fails, the session is still here to retry, rather
+    // than gone locally while still counting toward the competition.
+    try {
+      const { deleteUploadedSession } = await import('./compete/api')
+      await deleteUploadedSession(session.id)
+    } catch {
+      setDeleteError("Couldn't remove this from your competition stats. Try again.")
+      return
+    }
     await deleteSession(session.id)
     onDeleted()
   }
@@ -100,6 +111,7 @@ function SessionCard({ session, onDeleted }: { session: SessionMeta; onDeleted: 
             </span>
           )}
         </p>
+        {deleteError && <p className="history-error" role="alert">{deleteError}</p>}
       </div>
 
       <div className="history-actions">

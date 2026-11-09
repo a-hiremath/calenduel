@@ -3,6 +3,8 @@
 // The Vite env var holding our OAuth Client ID.
 interface ImportMetaEnv {
   readonly VITE_GOOGLE_CLIENT_ID: string
+  readonly VITE_NEON_AUTH_URL: string
+  readonly VITE_NEON_DATA_API_URL: string
 }
 interface ImportMeta {
   readonly env: ImportMetaEnv

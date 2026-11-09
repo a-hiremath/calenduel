@@ -1,0 +1,290 @@
+/* ─────────────────────────────────────────────────────────────────
+   Compete page — same editorial column as the Sessions page.
+   ───────────────────────────────────────────────────────────────── */
+
+.compete {
+  width: 100%;
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: clamp(4.5rem, 13vh, 9rem) 1.5rem 6rem;
+}
+
+.compete h1 {
+  margin: 0 0 3rem;
+}
+
+.compete-section {
+  margin-bottom: 3.5rem;
+}
+
+.compete-section h2 {
+  margin-bottom: 1.25rem;
+}
+
+.compete-lead {
+  font-size: 15.5px;
+  color: var(--text-h);
+  margin-bottom: 1.5rem;
+}
+
+.compete-note {
+  font-size: 13px;
+  color: var(--text);
+  margin-top: 0.75rem;
+}
+
+.compete-error {
+  font-size: 13px;
+  color: var(--error);
+  margin: 0.75rem 0;
+}
+
+/* ── Today's standings ────────────────────────────────────────── */
+
+.standings {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.standing {
+  display: grid;
+  grid-template-columns: 1.5rem 1fr auto;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.standing:first-child {
+  border-top: 1px solid var(--border);
+}
+
+.standing-rank {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.standing-name {
+  font-size: 15.5px;
+  font-weight: 500;
+  color: var(--text-h);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.standing-time {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-h);
+}
+
+.standing.leading .standing-rank,
+.standing.leading .standing-time {
+  color: var(--accent);
+}
+
+/* ── Head to head ─────────────────────────────────────────────── */
+
+.rivals {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.rival {
+  padding: 1.25rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.rival:first-child {
+  border-top: 1px solid var(--border);
+}
+
+.rival-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.rival-name {
+  margin: 0;
+  font-size: 15.5px;
+  font-weight: 500;
+  color: var(--text-h);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rival-since {
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+
+.compete-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.compete-table th,
+.compete-table td {
+  padding: 0.3rem 0;
+  font-size: 13px;
+  font-weight: 400;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compete-table th:first-child {
+  text-align: left;
+  color: var(--text);
+}
+
+.compete-table thead th {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+.compete-table td {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-h);
+}
+
+.compete-table td.ahead {
+  color: var(--accent);
+}
+
+.rival-days {
+  margin-top: 0.75rem;
+}
+
+.rival-days summary {
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  margin-bottom: 0.25rem;
+}
+
+.rival-days summary:hover {
+  color: var(--text-h);
+}
+
+.rival-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.rival-actions .compete-note {
+  margin: 0 auto 0 0;
+}
+
+/* ── Invites ──────────────────────────────────────────────────── */
+
+.invite-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+  margin-top: 1rem;
+}
+
+.invite-code,
+.invite-input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 13.5px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  color: var(--text-h);
+  overflow-wrap: anywhere;
+}
+
+.invite-code {
+  background: var(--code-bg);
+}
+
+.invite-input {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+}
+
+.invite-input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ── Buttons ──────────────────────────────────────────────────── */
+
+.compete-btn {
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-h);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.compete-btn:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.compete-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.compete-btn.primary {
+  font-size: 14px;
+  padding: 9px 18px;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.compete-btn.danger:hover:not(:disabled) {
+  color: var(--error);
+  border-color: var(--error);
+  background: transparent;
+}
+
+.compete-link {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.compete-link:hover {
+  color: var(--text-h);
+}

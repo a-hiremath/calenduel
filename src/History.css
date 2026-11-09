@@ -134,6 +134,12 @@
   color: var(--accent);
 }
 
+.history-error {
+  font-size: 12px;
+  color: var(--error);
+  margin-top: 0.35rem;
+}
+
 /* ── Action buttons ───────────────────────────────────────────── */
 
 .history-actions {
