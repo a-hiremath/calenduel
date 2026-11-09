@@ -22,6 +22,7 @@ import {
   localDay,
   type DailyTotal,
 } from './stats'
+import Avatar from '../Avatar'
 import './Compete.css'
 
 const REFRESH_MS = 60_000
@@ -139,7 +140,10 @@ function FriendCard({
   return (
     <li className="rival">
       <div className="rival-head">
-        <h3 className="rival-name">{friend.name}</h3>
+        <div className="rival-who">
+          <Avatar name={friend.name} src={friend.avatar} />
+          <h3 className="rival-name">{friend.name}</h3>
+        </div>
         <p className="rival-since">since {shortDay(friend.since)}</p>
       </div>
 
@@ -388,6 +392,12 @@ export default function Compete() {
         board.today,
       )
     : []
+  // The standings only carry ids and names, so pictures are looked up beside them.
+  const avatars = new Map(
+    board
+      ? [board.profile, ...board.friends].map((p) => [p.id, p.avatar] as const)
+      : [],
+  )
 
   return (
     <main className="compete">
@@ -437,6 +447,7 @@ export default function Compete() {
                   }
                 >
                   <span className="standing-rank">{s.rank}</span>
+                  <Avatar name={s.name} src={avatars.get(s.id) ?? null} />
                   <span className="standing-name">
                     {s.id === board.profile.id ? 'You' : s.name}
                   </span>

@@ -19,11 +19,13 @@ export interface Profile {
   id: string
   name: string
   inviteCode: string
+  avatar: string | null // a small JPEG data URL
 }
 
 export interface Friend {
   id: string
   name: string
+  avatar: string | null
   since: string // YYYY-MM-DD: the head-to-head record starts here
 }
 
@@ -64,8 +66,25 @@ export async function signOut(): Promise<void> {
 export async function ensureProfile(): Promise<Profile> {
   const { data, error } = await neon.rpc('ensure_profile').single()
   if (error) fail(error)
-  const row = data as { user_id: string; display_name: string; invite_code: string }
-  return { id: row.user_id, name: row.display_name, inviteCode: row.invite_code }
+  const row = data as {
+    user_id: string
+    display_name: string
+    invite_code: string
+    avatar: string | null
+  }
+  return {
+    id: row.user_id,
+    name: row.display_name,
+    inviteCode: row.invite_code,
+    avatar: row.avatar,
+  }
+}
+
+// Sets or, with null, removes the caller's picture. The policy in
+// db/migrations only lets this reach the caller's own row, whatever id is sent.
+export async function setAvatar(userId: string, avatar: string | null): Promise<void> {
+  const { error } = await neon.from('profiles').update({ avatar }).eq('user_id', userId)
+  if (error) fail(error)
 }
 
 export async function listFriends(): Promise<Friend[]> {
@@ -78,19 +97,19 @@ export async function listFriends(): Promise<Friend[]> {
 
   const { data: profiles, error: profileError } = await neon
     .from('profiles')
-    .select('user_id, display_name')
+    .select('user_id, display_name, avatar')
     .in('user_id', rows.map((r) => r.friend_id))
   if (profileError) fail(profileError)
 
-  const names = new Map(
-    (profiles as { user_id: string; display_name: string }[]).map((p) => [
-      p.user_id,
-      p.display_name,
-    ]),
+  const byId = new Map(
+    (
+      profiles as { user_id: string; display_name: string; avatar: string | null }[]
+    ).map((p) => [p.user_id, p]),
   )
   return rows.map((r) => ({
     id: r.friend_id,
-    name: names.get(r.friend_id) ?? 'Unknown',
+    name: byId.get(r.friend_id)?.display_name ?? 'Unknown',
+    avatar: byId.get(r.friend_id)?.avatar ?? null,
     since: r.since,
   }))
 }

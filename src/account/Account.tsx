@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { listSessions } from '../db'
 import { formatStudyTime, localDay } from '../compete/stats'
 import { ACTIVITY_WEEKS, studyStats, type DayActivity, type StudyStats } from './stats'
 import './Account.css'
+
+// Stats come from this device and need no sign-in, so only the profile half
+// waits on the auth and database SDK.
+const ProfileSection = lazy(() => import('./ProfileSection'))
 
 function days(n: number): string {
   return `${n} day${n === 1 ? '' : 's'}`
@@ -81,6 +85,10 @@ export default function Account() {
   return (
     <main className="account">
       <h1>Account</h1>
+
+      <Suspense fallback={null}>
+        <ProfileSection />
+      </Suspense>
 
       <section className="account-section">
         <h2>Stats</h2>
