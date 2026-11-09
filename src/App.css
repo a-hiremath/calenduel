@@ -1,5 +1,6 @@
 /* ─────────────────────────────────────────────────────────────────
-   Navigation — a row of tabs, same column width, warm minimal.
+   Navigation — a row of tabs, same column width, warm minimal, and the
+   Account gear on its own in the page's top-right corner.
    ───────────────────────────────────────────────────────────────── */
 
 .nav {
@@ -33,4 +34,33 @@
   color: var(--text-h);
   border-bottom: 1px solid var(--text-h);
   padding-bottom: 2px;
+}
+
+/* Pinned to the window's corner, not the column's, so it reads as a setting
+   rather than a fourth tab. Absolute, so it scrolls away with the tabs. */
+.nav-gear {
+  position: absolute; /* against the page, since no ancestor is positioned */
+  top: 1rem;
+  right: 1.25rem;
+  display: flex;
+  padding: 4px;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.nav-gear:hover {
+  color: var(--text-h);
+}
+
+.nav-gear.active {
+  color: var(--accent);
+}
+
+.nav-gear:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
