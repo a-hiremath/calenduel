@@ -3,9 +3,22 @@ import Stopwatch from './Stopwatch'
 import { useTimelapseRecorder } from './session/useTimelapseRecorder'
 import { downloadBlob, timelapseName } from './media/share'
 import { DEFAULT_SESSION_NAME, SESSION_NAME_MAX, saveSession } from './db'
+import { formatStudyTime } from './compete/stats'
+import {
+  clearActive,
+  HEARTBEAT_MS,
+  interruptedSession,
+  tabId,
+  writeActive,
+  type ActiveSession,
+} from './session/activeSession'
 import './SessionTimer.css'
 
 type Status = 'idle' | 'starting' | 'running' | 'encoding' | 'done'
+
+// Resuming carries on the same session, gap included, so it's only offered
+// soon after it stopped: a refresh, not a laptop closed overnight.
+const RESUME_WINDOW_MS = 10 * 60_000
 
 // Error names like QuotaExceededError are the useful part when someone sends a
 // screenshot of a failure.
@@ -31,6 +44,11 @@ export default function SessionTimer({
   // (after that, rename it on the Sessions page).
   const [name, setName] = useState('')
   const task = name.trim() || DEFAULT_SESSION_NAME
+  // A session cut off by a refresh or a closed tab, read once on load.
+  const [interrupted, setInterrupted] = useState<ActiveSession | null>(() =>
+    interruptedSession(Date.now()),
+  )
+  const [notice, setNotice] = useState<string | null>(null)
 
   // Destructured into locals: the refs lint rule can't classify properties read
   // off the returned object, but a bare ref passed to a ref prop is fine.
@@ -51,19 +69,75 @@ export default function SessionTimer({
     onActiveChange(inProgress)
   }, [inProgress, onActiveChange])
 
+  // While running, keep a record that outlives the page, refreshed on a
+  // heartbeat and once more as the page goes away.
+  useEffect(() => {
+    if (status !== 'running' || startedAt === null) return
+    const beat = () =>
+      writeActive({ startedAt, name: task, lastSeen: Date.now(), tabId: tabId() })
+    beat()
+    const timer = setInterval(beat, HEARTBEAT_MS)
+    window.addEventListener('pagehide', beat)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('pagehide', beat)
+    }
+  }, [status, startedAt, task])
+
+  // Ask before a refresh or close throws away a session in progress.
+  useEffect(() => {
+    if (!inProgress) return
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [inProgress])
+
   // One click does everything: screen picker, camera, recording, stopwatch.
   // (getDisplayMedia needs this click's user gesture — it can't run on load.)
-  async function handleStart() {
+  // resumeFrom carries on an interrupted session from its original start.
+  async function handleStart(resumeFrom?: number) {
     setError(null)
+    setNotice(null)
     setStatus('starting')
     try {
       await begin()
-      setStartedAt(Date.now())
+      setStartedAt(resumeFrom ?? Date.now())
+      setInterrupted(null)
       setStatus('running')
     } catch {
       setError('Screen and camera access are needed to record your session.')
       setStatus('idle')
     }
+  }
+
+  function handleResume() {
+    if (!interrupted) return
+    setName(interrupted.name === DEFAULT_SESSION_NAME ? '' : interrupted.name)
+    void handleStart(interrupted.startedAt)
+  }
+
+  // Keeps the time up to the last heartbeat, without a clip.
+  async function handleSaveInterrupted() {
+    if (!interrupted) return
+    const elapsedMs = interrupted.lastSeen - interrupted.startedAt
+    try {
+      await saveSession(
+        { startedAt: interrupted.startedAt, task: interrupted.name, goalMs: 0, elapsedMs },
+        null,
+      )
+    } catch {
+      setError("This session couldn't be saved on this device.")
+      return
+    }
+    clearActive()
+    setInterrupted(null)
+    setNotice(`Saved ${formatStudyTime(elapsedMs)}.`)
+    onSessionSaved?.()
+  }
+
+  function handleDiscardInterrupted() {
+    clearActive()
+    setInterrupted(null)
   }
 
   async function handleStop() {
@@ -98,7 +172,10 @@ export default function SessionTimer({
     }
 
     const validClip = saved && recorded && recorded.size > 0 ? recorded : null
-    if (saved) onSessionSaved?.()
+    if (saved) {
+      clearActive()
+      onSessionSaved?.()
+    }
     setClip(validClip)
     if (!saved) {
       setError("This session couldn't be saved on this device.")
@@ -124,10 +201,9 @@ export default function SessionTimer({
   }
 
   return (
-    // Switch to the camera layout only once the feed is live. Keying it to
+    // Switch to the focus layout only once the feed is live. Keying it to
     // inProgress would flip it during 'starting', while the permission
-    // prompts are still up, leaving the stopwatch stranded in the bar with no
-    // camera above it.
+    // prompts are still up, sizing things for a camera that isn't there yet.
     <section className="session" data-focus={streaming}>
       {/* Camera-only preview. The screen is recorded but never shown — a live
           preview of your own screen reflects itself forever. Shown whenever
@@ -163,7 +239,7 @@ export default function SessionTimer({
 
       <div className="session-actions">
         {status === 'idle' && (
-          <button type="button" className="session-start" onClick={handleStart}>
+          <button type="button" className="session-start" onClick={() => handleStart()}>
             Start
           </button>
         )}
@@ -208,6 +284,30 @@ export default function SessionTimer({
         )}
       </div>
 
+      {status === 'idle' && interrupted && (
+        <div className="session-recover" role="status">
+          <p>
+            “{interrupted.name}” was cut off after{' '}
+            {formatStudyTime(interrupted.lastSeen - interrupted.startedAt)}. Its
+            timelapse couldn't be kept.
+          </p>
+          <div className="session-recover-actions">
+            {Date.now() - interrupted.lastSeen < RESUME_WINDOW_MS && (
+              <button type="button" className="session-stop" onClick={handleResume}>
+                Resume
+              </button>
+            )}
+            <button type="button" className="session-stop" onClick={handleSaveInterrupted}>
+              Save the time
+            </button>
+            <button type="button" className="session-link" onClick={handleDiscardInterrupted}>
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
+
+      {notice && <p className="session-notice" role="status">{notice}</p>}
       {error && <p className="error">{error}</p>}
     </section>
   )

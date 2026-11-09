@@ -1,6 +1,6 @@
 /* ─────────────────────────────────────────────────────────────────
-   Study session — one Start click, then a live preview over a big
-   stopwatch. Everything centered, gold accent.
+   Study session — one Start click, then the name over a big stopwatch,
+   with a small camera tile in the corner. Everything centered, gold accent.
    ───────────────────────────────────────────────────────────────── */
 
 .session {
@@ -16,52 +16,27 @@
   gap: 2.25rem;
 }
 
-/* Focus mode (camera feed live): the nav is hidden and the live preview
-   takes most of the viewport. Until the feed is up, the session stays in the
-   centered idle layout. Below the camera, one bar: the session name over a
-   large stopwatch in the middle, Stop on the right. */
-.session[data-focus='true'] {
-  max-width: none;
-  /* Exactly the viewport, never taller. Without flex: none + min-height: 0,
-     the flex item grows to the camera's native resolution and the page
-     scrolls. */
-  flex: none;
-  height: 100svh;
-  min-height: 0;
-  padding: 1rem;
-  display: grid;
-  /* Equal side columns keep the clock on the page's centre line no matter how
-     wide the Stop button is. */
-  grid-template-columns: 1fr auto 1fr;
-  grid-template-rows: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 1rem 1.5rem;
-}
-
+/* Focus mode (camera feed live): the nav is hidden and the screen is the
+   session's name over a large stopwatch, centred, with Stop beneath. The
+   camera shrinks to a small tile in the bottom-right corner, the same corner
+   the face sits in on the recorded timelapse. Until the feed is up, the
+   session stays in the idle layout. */
 .session[data-focus='true'] .session-stage {
-  grid-column: 1 / -1;
-  align-self: stretch;
-  aspect-ratio: auto;
-  min-height: 0;
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  width: clamp(8rem, 20vw, 15rem);
+  aspect-ratio: 4 / 3;
+  z-index: 1;
 }
 
-.session[data-focus='true'] .session-clock {
-  grid-column: 2;
-}
-
-/* Sized off the viewport's height: the camera gives up this room, so a short
-   window gets a smaller clock rather than a sliver of camera. */
 .session[data-focus='true'] .stopwatch {
-  --size: clamp(3.5rem, 13vh, 7rem);
+  --size: clamp(7rem, 24vw, 13rem);
 }
 
-.session[data-focus='true'] .session-actions {
-  grid-column: 3;
-  justify-self: end;
-}
-
-.session[data-focus='true'] .error {
-  grid-column: 1 / -1;
+.session[data-focus='true'] .session-name {
+  width: 22rem;
+  font-size: 17px;
 }
 
 /* ── Name + stopwatch ──────────────────────────────────────────────── */
@@ -103,10 +78,8 @@
   border-bottom-color: var(--accent);
 }
 
-/* ── Live preview (full 16:9, shown while recording) ───────────────── */
+/* ── Live preview (shown while recording) ──────────────────────────── */
 .session-stage {
-  align-self: stretch; /* full column width despite the centered flex column */
-  aspect-ratio: 16 / 9;
   background: var(--bg-elev);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -189,5 +162,43 @@
   margin: 0;
   font-size: 14px;
   color: var(--error);
+  text-align: center;
+}
+
+/* ── Interrupted session ──────────────────────────────────────────── */
+.session-recover {
+  max-width: 24rem;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.session-recover-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.session-link {
+  font-size: 13px;
+  color: var(--text);
+  background: none;
+  border: none;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.session-link:hover {
+  color: var(--text-h);
+}
+
+.session-notice {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
   text-align: center;
 }
