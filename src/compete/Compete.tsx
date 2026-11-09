@@ -3,6 +3,8 @@ import {
   addFriend,
   ensureProfile,
   fetchDailyTotals,
+  fetchFriendSessions,
+  FRIEND_SESSION_LIMIT,
   isSignedIn,
   listFriends,
   removeFriend,
@@ -10,6 +12,7 @@ import {
   signOut,
   syncSessions,
   type Friend,
+  type FriendSession,
   type Profile,
 } from './api'
 import {
@@ -48,6 +51,63 @@ function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`
 }
 
+// In the viewer's own timezone, so a friend abroad can fall on a different date
+// than the day the session counted toward.
+function sessionStart(startedAt: string): string {
+  return new Date(startedAt).toLocaleString([], {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+// Mounted only while its section is open, so each opening fetches fresh sessions
+// and closed cards cost nothing.
+function FriendSessions({ friendId }: { friendId: string }) {
+  const [sessions, setSessions] = useState<FriendSession[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let closed = false
+    fetchFriendSessions(friendId)
+      .then((rows) => {
+        if (!closed) setSessions(rows)
+      })
+      .catch((err) => {
+        if (!closed) setError(errorText(err))
+      })
+    return () => {
+      closed = true
+    }
+  }, [friendId])
+
+  if (error) return <p className="compete-error" role="alert">{error}</p>
+  if (!sessions) return <p className="compete-note">Loading...</p>
+  if (sessions.length === 0) {
+    return <p className="compete-note">No sessions since you connected.</p>
+  }
+
+  return (
+    <>
+      <table className="compete-table">
+        <tbody>
+          {sessions.map((s) => (
+            <tr key={s.id}>
+              <th scope="row">{sessionStart(s.startedAt)}</th>
+              <td>{formatStudyTime(s.elapsedMs)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {sessions.length === FRIEND_SESSION_LIMIT && (
+        <p className="compete-note">Showing the latest {FRIEND_SESSION_LIMIT}.</p>
+      )}
+    </>
+  )
+}
+
 function FriendCard({
   friend,
   me,
@@ -63,6 +123,7 @@ function FriendCard({
 }) {
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [sessionsOpen, setSessionsOpen] = useState(false)
   const h = headToHead(totals, me.id, friend.id, friend.since, today)
 
   async function handleRemove() {
@@ -127,6 +188,14 @@ function FriendCard({
             ))}
           </tbody>
         </table>
+      </details>
+
+      <details
+        className="rival-days"
+        onToggle={(e) => setSessionsOpen(e.currentTarget.open)}
+      >
+        <summary>Study sessions</summary>
+        {sessionsOpen && <FriendSessions friendId={friend.id} />}
       </details>
 
       <div className="rival-actions">
@@ -211,9 +280,9 @@ function InviteForm({
     <section className="compete-section">
       <h2>Add a friend</h2>
       <p className="compete-note">
-        Friends see your name and daily study totals. They never see your clips
-        or when you studied. Only share your link with people you want to compete
-        against.
+        Friends see your name and your sessions from the day you connect: when
+        each one started and how long it lasted. They never see your clips. Only
+        share your link with people you want to compete against.
       </p>
 
       <div className="invite-row">
@@ -339,7 +408,8 @@ export default function Compete() {
           </button>
           <p className="compete-note">
             Signing in uploads the start time and length of your sessions so they
-            can count. Your clips stay on this device.
+            can count and friends you add can see them. Your clips stay on this
+            device.
           </p>
         </section>
       )}

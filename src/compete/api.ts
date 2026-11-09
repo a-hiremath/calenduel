@@ -27,6 +27,12 @@ export interface Friend {
   since: string // YYYY-MM-DD: the head-to-head record starts here
 }
 
+export interface FriendSession {
+  id: string
+  startedAt: string
+  elapsedMs: number
+}
+
 // PostgREST and auth errors are plain objects, not Error instances.
 function fail(error: { message?: string }): never {
   throw new Error(error.message ?? 'Something went wrong. Please try again.')
@@ -105,6 +111,17 @@ export async function fetchDailyTotals(): Promise<DailyTotal[]> {
   if (error) fail(error)
   return (data as { user_id: string; day: string; total_ms: number }[]).map(
     (r) => ({ userId: r.user_id, day: r.day, totalMs: r.total_ms }),
+  )
+}
+
+// The server returns at most this many, newest first.
+export const FRIEND_SESSION_LIMIT = 50
+
+export async function fetchFriendSessions(friendId: string): Promise<FriendSession[]> {
+  const { data, error } = await neon.rpc('friend_sessions', { friend: friendId })
+  if (error) fail(error)
+  return (data as { id: string; started_at: string; elapsed_ms: number }[]).map(
+    (r) => ({ id: r.id, startedAt: r.started_at, elapsedMs: r.elapsed_ms }),
   )
 }
 
