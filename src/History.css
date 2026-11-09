@@ -104,8 +104,11 @@
   border: none;
   border-bottom: 1px solid transparent;
   border-radius: 0;
-  padding: 0;
+  /* A taller click target; the negative margin keeps the layout unchanged. */
+  padding: 4px 0;
+  margin: -4px 0;
   text-overflow: ellipsis;
+  cursor: text;
   transition: border-color 0.2s ease;
 }
 

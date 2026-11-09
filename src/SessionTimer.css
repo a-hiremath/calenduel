@@ -48,8 +48,13 @@
   min-width: 0;
 }
 
-/* Reads as a caption, not a form field: no box until it's hovered or focused. */
+/* Reads as a caption, not a form field: no box until it's hovered or focused.
+   Stacked above the stopwatch: the numerals' line-height is tighter than the
+   glyphs, so their invisible text box reaches up over this field and was
+   swallowing clicks on its middle. */
 .session-name {
+  position: relative;
+  z-index: 1;
   width: 16rem;
   max-width: 100%;
   font: inherit;
