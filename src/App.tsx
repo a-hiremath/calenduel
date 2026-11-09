@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import SessionTimer from './SessionTimer'
 import History from './History'
 import Account from './account/Account'
@@ -8,12 +8,20 @@ import './App.css'
 // it loads on demand rather than slowing down the timer.
 const Compete = lazy(() => import('./compete/Compete'))
 
-type Page = 'timer' | 'history' | 'compete' | 'account'
+const PAGES = ['timer', 'history', 'compete', 'account'] as const
+type Page = (typeof PAGES)[number]
 
+function isPage(value: string | null): value is Page {
+  return (PAGES as readonly (string | null)[]).includes(value)
+}
+
+// The open page is kept in the URL (?tab=...), so a refresh lands back on it.
 // Invite links and the return trip from Google sign-in land on Compete.
 function initialPage(): Page {
   const params = new URLSearchParams(window.location.search)
-  return params.has('invite') || params.get('tab') === 'compete' ? 'compete' : 'timer'
+  if (params.has('invite')) return 'compete'
+  const tab = params.get('tab')
+  return isPage(tab) ? tab : 'timer'
 }
 
 // The Lucide "settings" icon (ISC licence), drawn in the current text colour.
@@ -43,6 +51,16 @@ function App() {
   const [sessionActive, setSessionActive] = useState(false)
   const [page, setPage] = useState<Page>(initialPage)
   const [historyKey, setHistoryKey] = useState(0)
+
+  // replaceState rather than a new history entry: switching tabs shouldn't
+  // fill up the Back button. Other parameters, like an invite code, survive.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (page === 'timer') params.delete('tab')
+    else params.set('tab', page)
+    const query = params.toString()
+    window.history.replaceState(null, '', query ? `/?${query}` : '/')
+  }, [page])
 
   return (
     <>
