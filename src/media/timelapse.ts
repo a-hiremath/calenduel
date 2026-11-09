@@ -63,6 +63,17 @@ export interface TimelapseRecorder {
   cancel: () => void
 }
 
+// A browser's encoder can stall without erroring, and Stop must always finish.
+const FLUSH_TIMEOUT_MS = 15_000
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
 // Scale (down only) so the longer side fits MAX_DIMENSION, keeping aspect ratio,
 // and round to even — H.264 4:2:0 needs even dimensions, and an oversized frame
 // blows past the codec level's max coded area (encode() then throws).
@@ -218,11 +229,16 @@ export function startTimelapse(
         }
       }
       try {
-        await encoder.flush()
+        await withTimeout(
+          encoder.flush(),
+          FLUSH_TIMEOUT_MS,
+          'The video encoder never finished.',
+        )
         muxer.finalize()
       } catch (e) {
         console.error('timelapse finalize error', e)
-        return { clip: null, problem: "Couldn't finish the timelapse video." }
+        const detail = e instanceof Error ? ` ${e.message}` : ''
+        return { clip: null, problem: `Couldn't finish the timelapse video.${detail}` }
       } finally {
         // An error during flush may already have closed it.
         if ((encoder.state as CodecState) !== 'closed') encoder.close()

@@ -10,6 +10,13 @@ type Status = 'idle' | 'starting' | 'running' | 'encoding' | 'done'
 // Pure stopwatch: no goal, so every session gets the same label.
 const TASK = 'Study session'
 
+// Error names like QuotaExceededError are the useful part when someone sends a
+// screenshot of a failure.
+function describe(e: unknown): string {
+  if (e instanceof Error) return e.name && e.name !== 'Error' ? `${e.name}: ${e.message}` : e.message
+  return String(e)
+}
+
 export default function SessionTimer({
   onActiveChange,
   onSessionSaved,
@@ -63,16 +70,38 @@ export default function SessionTimer({
     const stopAt = Date.now()
     setStoppedAt(stopAt) // freezes the stopwatch on the final time
     setStatus('encoding')
-    const { clip: recorded, problem } = await end()
-    const validClip = recorded && recorded.size > 0 ? recorded : null
-    await saveSession(
-      { startedAt, task: TASK, goalMs: 0, elapsedMs: stopAt - startedAt },
-      validClip,
-    )
-    onSessionSaved?.()
+    // Every step below is allowed to fail, but none may leave Stop hanging:
+    // the study time is what matters most, the clip comes second.
+    let { clip: recorded, problem } = await end().catch((e: unknown) => ({
+      clip: null,
+      problem: `Recording failed: ${describe(e)}`,
+    }))
+    const meta = { startedAt, task: TASK, goalMs: 0, elapsedMs: stopAt - startedAt }
+    let saved = false
+    try {
+      await saveSession(meta, recorded && recorded.size > 0 ? recorded : null)
+      saved = true
+    } catch (e) {
+      console.error('saving session with clip failed', e)
+      if (recorded && recorded.size > 0) {
+        problem = `The browser wouldn't store the video (${describe(e)}).`
+        recorded = null
+        try {
+          await saveSession(meta, null)
+          saved = true
+        } catch (retryError) {
+          console.error('saving session failed', retryError)
+        }
+      }
+    }
+
+    const validClip = saved && recorded && recorded.size > 0 ? recorded : null
+    if (saved) onSessionSaved?.()
     setClip(validClip)
-    // The time still counts; say why there's no video rather than leave it out.
-    if (!validClip) {
+    if (!saved) {
+      setError("This session couldn't be saved on this device.")
+    } else if (!validClip) {
+      // The time still counts; say why there's no video rather than leave it out.
       setError(`Your session was saved without a timelapse. ${problem ?? ''}`.trim())
     }
     setStatus('done')

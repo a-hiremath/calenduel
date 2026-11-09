@@ -20,7 +20,14 @@ function promisify<T>(req: IDBRequest<T>): Promise<T> {
 function awaitTransaction(tx: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve()
-    tx.onerror = () => reject(tx.error)
+    // The failing request carries the error; tx.error is still null while its
+    // error event bubbles up.
+    tx.onerror = (e) =>
+      reject((e.target as IDBRequest | null)?.error ?? tx.error ?? new DOMException('Save failed'))
+    // A transaction can abort without an error event (e.g. the browser refusing
+    // to store a large file). Without this the promise never settles, and the
+    // app sat on "Saving…" forever.
+    tx.onabort = () => reject(tx.error ?? new DOMException('Transaction aborted', 'AbortError'))
   })
 }
 

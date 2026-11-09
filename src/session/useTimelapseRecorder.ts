@@ -54,6 +54,9 @@ export function useTimelapseRecorder(onInterrupted: () => void): RecorderHandle 
     const face = faceVideoRef.current
     if (!streams || !face) return
     face.srcObject = streams.face
+    // Safari doesn't always honour autoPlay when srcObject is set after mount,
+    // which left the camera preview blank.
+    void face.play().catch(() => {})
     // In the page but invisible, so it can't appear in its own capture. Some
     // browsers never deliver frames from a <video> that isn't in the document,
     // which left the timelapse empty. An explicit play() (not the autoplay
