@@ -63,14 +63,18 @@ export default function SessionTimer({
     const stopAt = Date.now()
     setStoppedAt(stopAt) // freezes the stopwatch on the final time
     setStatus('encoding')
-    const blob = await end()
-    const validClip = blob && blob.size > 0 ? blob : null
+    const { clip: recorded, problem } = await end()
+    const validClip = recorded && recorded.size > 0 ? recorded : null
     await saveSession(
       { startedAt, task: TASK, goalMs: 0, elapsedMs: stopAt - startedAt },
       validClip,
     )
     onSessionSaved?.()
-    setClip(blob)
+    setClip(validClip)
+    // The time still counts; say why there's no video rather than leave it out.
+    if (!validClip) {
+      setError(`Your session was saved without a timelapse. ${problem ?? ''}`.trim())
+    }
     setStatus('done')
   }
 

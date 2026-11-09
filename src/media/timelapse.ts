@@ -30,10 +30,17 @@ const BITRATE = 4_000_000
 // shared timelapse needs, and it would balloon the file. Capping also keeps us
 // safely inside the codec level's max frame size (see CODEC).
 const MAX_DIMENSION = 1920
-// H.264 High profile, level 5.1: handles anything up to ~4K, so any screen
-// scaled to MAX_DIMENSION fits with headroom regardless of aspect ratio. (Level
-// 3.1 — the old default — tops out at 1280×720, which Retina screens blow past.)
-const CODEC = 'avc1.640033'
+// Tried in order; the first one this browser can actually encode wins. Browsers
+// differ here (which H.264 profiles they ship an encoder for, whether they have
+// one at all), and an unsupported config used to fail silently, saving the
+// session with no clip. Every H.264 entry is level 5.1, which handles up to ~4K,
+// so any screen scaled to MAX_DIMENSION fits regardless of aspect ratio.
+const CODECS: { codec: string; muxer: 'avc' | 'vp9' }[] = [
+  { codec: 'avc1.640033', muxer: 'avc' }, // H.264 High
+  { codec: 'avc1.4d0033', muxer: 'avc' }, // H.264 Main
+  { codec: 'avc1.420033', muxer: 'avc' }, // H.264 Baseline
+  { codec: 'vp09.00.41.08', muxer: 'vp9' }, // VP9, for browsers without H.264
+]
 
 // Face inset (picture-in-picture): fraction of the screen width, pinned to the
 // bottom-right with a margin and a dark frame so it reads against busy content.
@@ -41,9 +48,15 @@ const INSET_FRACTION = 0.25
 const INSET_MARGIN = 16
 const INSET_BORDER = 3
 
+export interface TimelapseResult {
+  clip: Blob | null
+  // Why there's no clip, in words the person recording can act on.
+  problem: string | null
+}
+
 export interface TimelapseRecorder {
-  // End sampling and finalize the live-encoded frames into one video Blob.
-  stop: () => Promise<Blob>
+  // End sampling and finalize the live-encoded frames into one video.
+  stop: () => Promise<TimelapseResult>
   // Abandon without finalizing — for teardown paths (e.g. the component
   // unmounting mid-recording) that don't need the clip. Safe to call after
   // stop(), and safe to call more than once.
@@ -74,18 +87,44 @@ export function startTimelapse(
   let muxer: Muxer<ArrayBufferTarget> | null = null
   let encoder: VideoEncoder | null = null
   let frameCount = 0
+  // Choosing a codec is async, so frames are skipped until it settles.
+  let settingUp = false
+  // The first thing that went wrong. Reported instead of failing silently.
+  let problem: string | null =
+    typeof VideoEncoder === 'undefined'
+      ? "This browser can't encode video, so no timelapse was recorded. Try Chrome or Edge."
+      : null
 
   // Frames are composited through this canvas (sized to the capped, even output
   // dimensions) so the VideoFrame always matches the encoder's configured size.
   const scratch = document.createElement('canvas')
   const ctx = scratch.getContext('2d')!
 
-  function setup(width: number, height: number) {
+  async function setup(width: number, height: number) {
+    let chosen: (typeof CODECS)[number] | null = null
+    for (const option of CODECS) {
+      const config = { codec: option.codec, width, height, bitrate: BITRATE }
+      try {
+        if ((await VideoEncoder.isConfigSupported(config)).supported) {
+          chosen = option
+          break
+        }
+      } catch {
+        // A config the browser can't even parse counts as unsupported.
+      }
+    }
+    if (timer === null) return // stopped while we were checking
+    if (!chosen) {
+      problem = "This browser has no video encoder the timelapse can use. Try Chrome or Edge."
+      stopSampling()
+      return
+    }
+
     scratch.width = width
     scratch.height = height
     const mux = new Muxer({
       target: new ArrayBufferTarget(),
-      video: { codec: 'avc', width, height },
+      video: { codec: chosen.muxer, width, height },
       fastStart: 'in-memory', // moov box up front → the Blob is seekable/playable
     })
     const enc = new VideoEncoder({
@@ -93,10 +132,11 @@ export function startTimelapse(
       output: (chunk, meta) => mux.addVideoChunk(chunk, meta),
       error: (e) => {
         console.error('timelapse encode error', e)
+        problem ??= `The video encoder stopped: ${e.message}`
         stopSampling() // a fatal error closes the codec; stop feeding it
       },
     })
-    enc.configure({ codec: CODEC, width, height, bitrate: BITRATE })
+    enc.configure({ codec: chosen.codec, width, height, bitrate: BITRATE })
     muxer = mux
     encoder = enc
   }
@@ -120,12 +160,16 @@ export function startTimelapse(
   let timer: ReturnType<typeof setInterval> | null = setInterval(() => {
     if (!screen.videoWidth) return // canvas size comes from the screen feed
     if (!encoder) {
-      const { width, height } = fitDimensions(screen.videoWidth, screen.videoHeight)
-      setup(width, height)
+      if (!settingUp) {
+        settingUp = true
+        const { width, height } = fitDimensions(screen.videoWidth, screen.videoHeight)
+        void setup(width, height)
+      }
+      return
     }
     // A fatal encode error flips the codec to 'closed'; bail rather than throw
     // on every tick.
-    if (encoder!.state !== 'configured') {
+    if (encoder.state !== 'configured') {
       stopSampling()
       return
     }
@@ -136,12 +180,17 @@ export function startTimelapse(
       duration: FRAME_DURATION_US,
     })
     try {
-      encoder!.encode(frame, { keyFrame: frameCount % KEYFRAME_INTERVAL === 0 })
+      encoder.encode(frame, { keyFrame: frameCount % KEYFRAME_INTERVAL === 0 })
+      frameCount++
+    } catch (e) {
+      console.error('timelapse encode error', e)
+      problem ??= `Couldn't encode the recording: ${e instanceof Error ? e.message : e}`
+      stopSampling()
     } finally {
       frame.close() // always release the GPU buffer, even if encode() throws
     }
-    frameCount++
   }, 1000 / SAMPLE_RATE)
+  if (problem) stopSampling()
 
   // Clearing the sampling interval, idempotently — both stop() and cancel()
   // funnel through here, so calling them in any order is safe.
@@ -158,13 +207,27 @@ export function startTimelapse(
       // can safely release the streams the moment stop() returns.
       stopSampling()
       // Nothing usable: never sampled, or the codec died mid-session — you can't
-      // flush a closed encoder, so return an empty clip rather than throw.
-      if (!encoder || !muxer || encoder.state !== 'configured') return new Blob([])
-      await encoder.flush()
-      muxer.finalize()
-      const blob = new Blob([muxer.target.buffer], { type: 'video/mp4' })
-      encoder.close()
-      return blob
+      // flush a closed encoder, so report why rather than throw.
+      if (problem) return { clip: null, problem }
+      if (!encoder || !muxer || encoder.state !== 'configured' || frameCount === 0) {
+        return {
+          clip: null,
+          problem: screen.videoWidth
+            ? 'The session was too short to record any frames.'
+            : 'The shared screen never showed up in the recording, so no timelapse was saved.',
+        }
+      }
+      try {
+        await encoder.flush()
+        muxer.finalize()
+      } catch (e) {
+        console.error('timelapse finalize error', e)
+        return { clip: null, problem: "Couldn't finish the timelapse video." }
+      } finally {
+        // An error during flush may already have closed it.
+        if ((encoder.state as CodecState) !== 'closed') encoder.close()
+      }
+      return { clip: new Blob([muxer.target.buffer], { type: 'video/mp4' }), problem: null }
     },
     cancel() {
       stopSampling()

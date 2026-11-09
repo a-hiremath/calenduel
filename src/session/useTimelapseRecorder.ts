@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { startCamera, startScreen, stopStream } from '../media/capture'
-import { startTimelapse, type TimelapseRecorder } from '../media/timelapse'
+import {
+  startTimelapse,
+  type TimelapseRecorder,
+  type TimelapseResult,
+} from '../media/timelapse'
 
 // Encapsulates the camera + screen + timelapse lifecycle for a study session.
 // Both streams live in STATE so that setting them mounts the face <video>;
@@ -24,8 +28,9 @@ export interface RecorderHandle {
   // Acquire screen + camera and start recording. Rejects if either is denied,
   // which the caller uses to block the session from starting.
   begin: () => Promise<void>
-  // Stop recording, release both streams, and resolve with the timelapse clip.
-  end: () => Promise<Blob | null>
+  // Stop recording, release both streams, and resolve with the timelapse clip
+  // or the reason there isn't one.
+  end: () => Promise<TimelapseResult>
 }
 
 // onInterrupted fires when the user ends the screen share from the browser's own
@@ -49,12 +54,24 @@ export function useTimelapseRecorder(onInterrupted: () => void): RecorderHandle 
     const face = faceVideoRef.current
     if (!streams || !face) return
     face.srcObject = streams.face
-    // Detached, so it can't appear in its own capture. An explicit play()
-    // (not the autoplay attribute) keeps the browser from pausing it as
-    // "not visible".
+    // In the page but invisible, so it can't appear in its own capture. Some
+    // browsers never deliver frames from a <video> that isn't in the document,
+    // which left the timelapse empty. An explicit play() (not the autoplay
+    // attribute) keeps the browser from pausing it as "not visible".
     const screen = document.createElement('video')
     screen.muted = true
     screen.playsInline = true
+    screen.setAttribute('aria-hidden', 'true')
+    Object.assign(screen.style, {
+      position: 'fixed',
+      left: '0',
+      top: '0',
+      width: '1px',
+      height: '1px',
+      opacity: '0',
+      pointerEvents: 'none',
+    })
+    document.body.appendChild(screen)
     screen.srcObject = streams.screen
     void screen.play()
     const timelapse = startTimelapse(face, screen)
@@ -70,6 +87,7 @@ export function useTimelapseRecorder(onInterrupted: () => void): RecorderHandle 
       timelapse.cancel()
       timelapseRef.current = null
       screen.srcObject = null
+      screen.remove()
       stopStream(streams.face)
       stopStream(streams.screen)
     }
@@ -94,14 +112,18 @@ export function useTimelapseRecorder(onInterrupted: () => void): RecorderHandle 
     // stop() clears the sampling timer synchronously, so releasing the streams
     // right after is safe — the lights go off while the final flush runs.
     const encoding =
-      timelapseRef.current?.stop() ?? Promise.resolve<Blob | null>(null)
+      timelapseRef.current?.stop() ??
+      Promise.resolve<TimelapseResult>({
+        clip: null,
+        problem: 'The recording never started, so no timelapse was saved.',
+      })
     if (streams) {
       stopStream(streams.face)
       stopStream(streams.screen)
     }
-    const blob = await encoding
+    const result = await encoding
     setStreams(null) // unmounts the previews and fires the effect cleanup
-    return blob
+    return result
   }, [streams])
 
   return {
