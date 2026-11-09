@@ -1,13 +1,14 @@
 import { lazy, Suspense, useState } from 'react'
 import SessionTimer from './SessionTimer'
 import History from './History'
+import Account from './account/Account'
 import './App.css'
 
 // The auth and database SDK is big and only competition features use it, so
 // it loads on demand rather than slowing down the timer.
 const Compete = lazy(() => import('./compete/Compete'))
 
-type Page = 'timer' | 'history' | 'compete'
+type Page = 'timer' | 'history' | 'compete' | 'account'
 
 // Invite links and the return trip from Google sign-in land on Compete.
 function initialPage(): Page {
@@ -48,6 +49,13 @@ function App() {
           >
             Compete
           </button>
+          <button
+            type="button"
+            className={page === 'account' ? 'nav-link active' : 'nav-link'}
+            onClick={() => setPage('account')}
+          >
+            Account
+          </button>
         </nav>
       )}
 
@@ -72,6 +80,8 @@ function App() {
           <Compete />
         </Suspense>
       )}
+
+      {page === 'account' && <Account />}
     </>
   )
 }
