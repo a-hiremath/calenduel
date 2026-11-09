@@ -1,6 +1,6 @@
 /* ─────────────────────────────────────────────────────────────────
    Study session — one Start click, then a live preview over a big
-   stopwatch dial. Everything centered, gold accent.
+   stopwatch. Everything centered, gold accent.
    ───────────────────────────────────────────────────────────────── */
 
 .session {
@@ -17,9 +17,9 @@
 }
 
 /* Focus mode (camera feed live): the nav is hidden and the live preview
-   takes almost the whole viewport. Until the feed is up, the session stays
-   in the centered idle layout. Below it, a slim control bar: stopwatch
-   on the left, Stop on the right. */
+   takes most of the viewport. Until the feed is up, the session stays in the
+   centered idle layout. Below the camera, one bar: the session name over a
+   large stopwatch in the middle, Stop on the right. */
 .session[data-focus='true'] {
   max-width: none;
   /* Exactly the viewport, never taller. Without flex: none + min-height: 0,
@@ -30,7 +30,9 @@
   min-height: 0;
   padding: 1rem;
   display: grid;
-  grid-template-columns: 1fr auto;
+  /* Equal side columns keep the clock on the page's centre line no matter how
+     wide the Stop button is. */
+  grid-template-columns: 1fr auto 1fr;
   grid-template-rows: minmax(0, 1fr) auto;
   align-items: center;
   gap: 1rem 1.5rem;
@@ -43,22 +45,62 @@
   min-height: 0;
 }
 
-.session[data-focus='true'] .stopwatch {
-  --size: 2.75rem;
-  justify-self: start;
+.session[data-focus='true'] .session-clock {
+  grid-column: 2;
 }
 
-/* At bar size the default ratio makes the seconds unreadable. */
-.session[data-focus='true'] .stopwatch-seconds {
-  font-size: 0.4em;
+/* Sized off the viewport's height: the camera gives up this room, so a short
+   window gets a smaller clock rather than a sliver of camera. */
+.session[data-focus='true'] .stopwatch {
+  --size: clamp(3.5rem, 13vh, 7rem);
 }
 
 .session[data-focus='true'] .session-actions {
+  grid-column: 3;
   justify-self: end;
 }
 
 .session[data-focus='true'] .error {
   grid-column: 1 / -1;
+}
+
+/* ── Name + stopwatch ──────────────────────────────────────────────── */
+.session-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+/* Reads as a caption, not a form field: no box until it's hovered or focused. */
+.session-name {
+  width: 16rem;
+  max-width: 100%;
+  font: inherit;
+  font-size: 14px;
+  text-align: center;
+  color: var(--text-h);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  padding: 2px 0;
+  text-overflow: ellipsis;
+  transition: border-color 0.2s ease;
+}
+
+.session-name::placeholder {
+  color: var(--text-mute);
+}
+
+.session-name:hover:not(:read-only) {
+  border-bottom-color: var(--border-strong);
+}
+
+.session-name:focus-visible {
+  outline: none;
+  border-bottom-color: var(--accent);
 }
 
 /* ── Live preview (full 16:9, shown while recording) ───────────────── */

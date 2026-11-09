@@ -91,14 +91,31 @@
   min-width: 0;
 }
 
+/* An input that reads as plain text until hovered or focused: click to rename. */
 .history-task {
+  display: block;
+  width: 100%;
+  font: inherit;
   font-size: 15.5px;
   font-weight: 500;
   color: var(--text-h);
   line-height: 1.35;
-  overflow: hidden;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  padding: 0;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  transition: border-color 0.2s ease;
+}
+
+.history-task:hover {
+  border-bottom-color: var(--border-strong);
+}
+
+.history-task:focus-visible {
+  outline: none;
+  border-bottom-color: var(--accent);
 }
 
 .history-meta {

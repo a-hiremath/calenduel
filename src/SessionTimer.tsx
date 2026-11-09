@@ -2,13 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import Stopwatch from './Stopwatch'
 import { useTimelapseRecorder } from './session/useTimelapseRecorder'
 import { downloadBlob, timelapseName } from './media/share'
-import { saveSession } from './db'
+import { DEFAULT_SESSION_NAME, SESSION_NAME_MAX, saveSession } from './db'
 import './SessionTimer.css'
 
 type Status = 'idle' | 'starting' | 'running' | 'encoding' | 'done'
-
-// Pure stopwatch: no goal, so every session gets the same label.
-const TASK = 'Study session'
 
 // Error names like QuotaExceededError are the useful part when someone sends a
 // screenshot of a failure.
@@ -29,6 +26,11 @@ export default function SessionTimer({
   const [stoppedAt, setStoppedAt] = useState<number | null>(null)
   const [clip, setClip] = useState<Blob | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Optional, and never required to start: Start stays one click. It can be
+  // typed before or during the session, and is fixed once Stop is pressed
+  // (after that, rename it on the Sessions page).
+  const [name, setName] = useState('')
+  const task = name.trim() || DEFAULT_SESSION_NAME
 
   // Destructured into locals: the refs lint rule can't classify properties read
   // off the returned object, but a bare ref passed to a ref prop is fine.
@@ -76,7 +78,7 @@ export default function SessionTimer({
       clip: null,
       problem: `Recording failed: ${describe(e)}`,
     }))
-    const meta = { startedAt, task: TASK, goalMs: 0, elapsedMs: stopAt - startedAt }
+    const meta = { startedAt, task, goalMs: 0, elapsedMs: stopAt - startedAt }
     let saved = false
     try {
       await saveSession(meta, recorded && recorded.size > 0 ? recorded : null)
@@ -112,19 +114,20 @@ export default function SessionTimer({
     setStoppedAt(null)
     setClip(null)
     setError(null)
+    setName('')
     stoppingRef.current = false
     setStatus('idle')
   }
 
   function handleDownload() {
-    if (clip) downloadBlob(clip, timelapseName(clip, TASK))
+    if (clip) downloadBlob(clip, timelapseName(clip, task))
   }
 
   return (
     // Switch to the camera layout only once the feed is live. Keying it to
     // inProgress would flip it during 'starting', while the permission
-    // prompts are still up, leaving the stopwatch stranded in the bar's left
-    // slot with no camera above it.
+    // prompts are still up, leaving the stopwatch stranded in the bar with no
+    // camera above it.
     <section className="session" data-focus={streaming}>
       {/* Camera-only preview. The screen is recorded but never shown — a live
           preview of your own screen reflects itself forever. Shown whenever
@@ -141,7 +144,22 @@ export default function SessionTimer({
         </div>
       )}
 
-      <Stopwatch startedAt={startedAt} stoppedAt={stoppedAt} />
+      <div className="session-clock">
+        <input
+          className="session-name"
+          aria-label="Session name"
+          placeholder={status === 'idle' ? 'Name this session' : DEFAULT_SESSION_NAME}
+          maxLength={SESSION_NAME_MAX}
+          autoComplete="off"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur()
+          }}
+          readOnly={status === 'encoding' || status === 'done'}
+        />
+        <Stopwatch startedAt={startedAt} stoppedAt={stoppedAt} />
+      </div>
 
       <div className="session-actions">
         {status === 'idle' && (

@@ -1,6 +1,10 @@
 const DB_NAME = 'calenduel'
 const DB_VERSION = 1
 
+// What a session is called until someone names it.
+export const DEFAULT_SESSION_NAME = 'Study session'
+export const SESSION_NAME_MAX = 60
+
 export interface SessionMeta {
   id: string
   startedAt: number
@@ -87,6 +91,20 @@ export async function getClip(id: string): Promise<Blob | null> {
     db.transaction('clips', 'readonly').objectStore('clips').get(id),
   )
   return blob instanceof Blob ? blob : null
+}
+
+// Names never leave the device, so renaming is purely a local edit.
+export async function renameSession(id: string, task: string): Promise<void> {
+  const db = await openDb()
+  const tx = db.transaction('sessions', 'readwrite')
+  const store = tx.objectStore('sessions')
+  // Written from inside the read's callback: an IndexedDB transaction closes
+  // itself once it's left idle, which awaiting the read first would risk.
+  const read = store.get(id)
+  read.onsuccess = () => {
+    if (read.result) store.put({ ...read.result, task })
+  }
+  await awaitTransaction(tx)
 }
 
 export async function deleteSession(id: string): Promise<void> {

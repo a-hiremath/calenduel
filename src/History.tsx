@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import { listSessions, getClip, deleteSession, type SessionMeta } from './db'
+import {
+  SESSION_NAME_MAX,
+  deleteSession,
+  getClip,
+  listSessions,
+  renameSession,
+  type SessionMeta,
+} from './db'
 import { downloadBlob, timelapseName } from './media/share'
 import './History.css'
 
@@ -27,11 +34,12 @@ function formatDuration(ms: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`
 }
 
-function SessionCard({ session, onDeleted }: { session: SessionMeta; onDeleted: () => void }) {
+function SessionCard({ session, onChanged }: { session: SessionMeta; onChanged: () => void }) {
   const [playing, setPlaying] = useState(false)
   const [clipUrl, setClipUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [name, setName] = useState(session.task)
 
   useEffect(() => {
     return () => { if (clipUrl) URL.revokeObjectURL(clipUrl) }
@@ -54,7 +62,7 @@ function SessionCard({ session, onDeleted }: { session: SessionMeta; onDeleted: 
     const blob = clipUrl
       ? await fetch(clipUrl).then((r) => r.blob())
       : await getClip(session.id)
-    if (blob) downloadBlob(blob, timelapseName(blob, session.task))
+    if (blob) downloadBlob(blob, timelapseName(blob, name.trim() || session.task))
   }
 
   async function handleDelete() {
@@ -69,7 +77,17 @@ function SessionCard({ session, onDeleted }: { session: SessionMeta; onDeleted: 
       return
     }
     await deleteSession(session.id)
-    onDeleted()
+    onChanged()
+  }
+
+  // Saved when the field loses focus. Clearing it puts the old name back
+  // rather than leaving a session with no name.
+  async function handleRename() {
+    const next = name.trim() || session.task
+    setName(next)
+    if (next === session.task) return
+    await renameSession(session.id, next)
+    onChanged()
   }
 
   const metPct = session.goalMs > 0
@@ -99,7 +117,18 @@ function SessionCard({ session, onDeleted }: { session: SessionMeta; onDeleted: 
       ) : null}
 
       <div className="history-info">
-        <p className="history-task">{session.task}</p>
+        <input
+          className="history-task"
+          aria-label="Session name"
+          maxLength={SESSION_NAME_MAX}
+          autoComplete="off"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={handleRename}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur()
+          }}
+        />
         <p className="history-meta">
           {formatDate(session.startedAt)} · {formatTimeOfDay(session.startedAt)}
         </p>
@@ -153,7 +182,7 @@ export default function History() {
       {sessions !== null && sessions.length > 0 && (
         <ul className="history-list">
           {sessions.map((s) => (
-            <SessionCard key={s.id} session={s} onDeleted={refresh} />
+            <SessionCard key={s.id} session={s} onChanged={refresh} />
           ))}
         </ul>
       )}
