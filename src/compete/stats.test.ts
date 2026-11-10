@@ -3,6 +3,7 @@ import {
   addDays,
   currentStreak,
   dailyStandings,
+  focusPercent,
   formatStudyTime,
   headToHead,
   localDay,
@@ -13,12 +14,13 @@ const TODAY = '2026-11-09'
 const SINCE = '2026-11-01'
 const MIN = 60_000
 
-const total = (userId: string, day: string, totalMs: number, focusMs = 0): DailyTotal => ({
-  userId,
-  day,
-  totalMs,
-  focusMs,
-})
+const total = (
+  userId: string,
+  day: string,
+  totalMs: number,
+  focusMs = 0,
+  analyzedMs = focusMs ? totalMs : 0,
+): DailyTotal => ({ userId, day, totalMs, focusMs, analyzedMs })
 
 describe('dates', () => {
   it('uses the local calendar date, not the UTC one', () => {
@@ -201,6 +203,13 @@ describe('focus time', () => {
       TODAY,
     )
     expect([h.myFocusMs, h.theirFocusMs]).toEqual([50 * MIN, 0])
+    expect([h.myAnalyzedMs, h.theirAnalyzedMs]).toEqual([120 * MIN, 0])
+  })
+
+  it('is a share of analyzed time, not of all time studied', () => {
+    // 2h studied, but only the 1h session was analyzed: 45 of 60 minutes.
+    expect(focusPercent(45 * MIN, 60 * MIN)).toBe(75)
+    expect(focusPercent(0, 0)).toBeNull()
   })
 })
 

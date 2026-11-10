@@ -91,6 +91,12 @@
   text-align: right;
 }
 
+.standing-percent {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 11px;
+}
+
 /* Column labels, laid out on the same grid as the rows beneath them. */
 .standing.standing-head {
   align-items: end;

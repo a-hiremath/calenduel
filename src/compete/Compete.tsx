@@ -17,6 +17,7 @@ import {
 } from './api'
 import {
   dailyStandings,
+  focusPercent,
   formatStudyTime,
   headToHead,
   localDay,
@@ -47,6 +48,12 @@ function shortDay(day: string): string {
     month: 'short',
     day: 'numeric',
   })
+}
+
+// "77%", or a dash when nothing has been analyzed: 0% would claim no focus.
+function percentText(focusMs: number, analyzedMs: number): string {
+  const percent = focusPercent(focusMs, analyzedMs)
+  return percent === null ? '–' : `${percent}%`
 }
 
 function plural(n: number, word: string): string {
@@ -174,6 +181,11 @@ function FriendCard({
             </th>
             <td>{formatStudyTime(h.myFocusMs)}</td>
             <td>{formatStudyTime(h.theirFocusMs)}</td>
+          </tr>
+          <tr>
+            <th scope="row">Focus %</th>
+            <td>{percentText(h.myFocusMs, h.myAnalyzedMs)}</td>
+            <td>{percentText(h.theirFocusMs, h.theirAnalyzedMs)}</td>
           </tr>
           <tr>
             <th scope="row">Streak</th>
@@ -471,16 +483,22 @@ export default function Compete() {
                     {s.id === board.profile.id ? 'You' : s.name}
                   </span>
                   <span className="standing-time">{formatStudyTime(s.totalMs)}</span>
-                  <span className="standing-focus" aria-label={`${formatStudyTime(s.focusMs)} focused, experimental`}>
+                  <span
+                    className="standing-focus"
+                    aria-label={`${formatStudyTime(s.focusMs)} focused, ${percentText(s.focusMs, s.analyzedMs)} of analyzed time, experimental`}
+                  >
                     {formatStudyTime(s.focusMs)}
+                    <span className="standing-percent">
+                      {percentText(s.focusMs, s.analyzedMs)}
+                    </span>
                   </span>
                 </li>
               ))}
             </ol>
             <p className="compete-note">
               Sessions count once you press Stop, toward the day they started.
-              Focus time counts the sessions you analyze on the Sessions page. It
-              doesn't decide who wins.
+              Focus counts the sessions you analyze on the Sessions page, and the
+              percentage is out of that analyzed time. It doesn't decide who wins.
             </p>
           </section>
 

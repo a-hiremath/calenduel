@@ -136,12 +136,19 @@ export async function fetchDailyTotals(): Promise<DailyTotal[]> {
   const { data, error } = await neon.rpc('daily_totals')
   if (error) fail(error)
   return (
-    data as { user_id: string; day: string; total_ms: number; focus_ms: number }[]
+    data as {
+      user_id: string
+      day: string
+      total_ms: number
+      focus_ms: number
+      analyzed_ms: number
+    }[]
   ).map((r) => ({
     userId: r.user_id,
     day: r.day,
     totalMs: r.total_ms,
     focusMs: r.focus_ms,
+    analyzedMs: r.analyzed_ms,
   }))
 }
 

@@ -6,6 +6,7 @@ export interface DailyTotal {
   day: string // YYYY-MM-DD
   totalMs: number
   focusMs: number // experimental: the part of analyzed sessions judged on task
+  analyzedMs: number // the length of the sessions that focus was measured on
 }
 
 export interface Person {
@@ -17,6 +18,7 @@ export interface Standing extends Person {
   rank: number
   totalMs: number
   focusMs: number
+  analyzedMs: number
 }
 
 export interface DayComparison {
@@ -33,6 +35,8 @@ export interface HeadToHead {
   theirTotalMs: number
   myFocusMs: number
   theirFocusMs: number
+  myAnalyzedMs: number
+  theirAnalyzedMs: number
   myStreak: number
   theirStreak: number
   recent: DayComparison[] // newest first, today included
@@ -64,11 +68,22 @@ function totalsFor(totals: DailyTotal[], userId: string): Map<string, number> {
   return byDay
 }
 
-// Focus time never decides a day, so it is only ever summed beside the totals.
-function focusSince(totals: DailyTotal[], userId: string, since: string): number {
-  let ms = 0
-  for (const t of totals) if (t.userId === userId && t.day >= since) ms += t.focusMs
-  return ms
+// Focus never decides a day, so it is only ever summed beside the totals.
+function focusSince(totals: DailyTotal[], userId: string, since: string) {
+  let focusMs = 0
+  let analyzedMs = 0
+  for (const t of totals) {
+    if (t.userId !== userId || t.day < since) continue
+    focusMs += t.focusMs
+    analyzedMs += t.analyzedMs
+  }
+  return { focusMs, analyzedMs }
+}
+
+// Out of the time that was analyzed, not all time studied: an unanalyzed
+// session says nothing about focus. Null when nothing has been analyzed.
+export function focusPercent(focusMs: number, analyzedMs: number): number | null {
+  return analyzedMs > 0 ? Math.round((100 * focusMs) / analyzedMs) : null
 }
 
 // Today's leaderboard, most time first. People level on time share a rank.
@@ -80,7 +95,12 @@ export function dailyStandings(
   const rows = people
     .map((p) => {
       const day = totals.find((t) => t.userId === p.id && t.day === today)
-      return { ...p, totalMs: day?.totalMs ?? 0, focusMs: day?.focusMs ?? 0 }
+      return {
+        ...p,
+        totalMs: day?.totalMs ?? 0,
+        focusMs: day?.focusMs ?? 0,
+        analyzedMs: day?.analyzedMs ?? 0,
+      }
     })
     .sort((a, b) => b.totalMs - a.totalMs)
 
@@ -134,6 +154,9 @@ export function headToHead(
     else ties += 1
   }
 
+  const myFocus = focusSince(totals, myId, since)
+  const theirFocus = focusSince(totals, theirId, since)
+
   const recent: DayComparison[] = []
   for (let i = 0; i < RECENT_DAYS; i++) {
     const day = addDays(today, -i)
@@ -150,8 +173,10 @@ export function headToHead(
     ties,
     myTotalMs,
     theirTotalMs,
-    myFocusMs: focusSince(totals, myId, since),
-    theirFocusMs: focusSince(totals, theirId, since),
+    myFocusMs: myFocus.focusMs,
+    theirFocusMs: theirFocus.focusMs,
+    myAnalyzedMs: myFocus.analyzedMs,
+    theirAnalyzedMs: theirFocus.analyzedMs,
     myStreak: currentStreak(new Set(mine.keys()), today),
     theirStreak: currentStreak(new Set(theirs.keys()), today),
     recent,
