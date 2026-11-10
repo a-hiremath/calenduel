@@ -1,0 +1,14 @@
+.experimental {
+  margin-left: 0.4rem;
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.experimental > span {
+  color: #b18a48;
+}

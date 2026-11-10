@@ -11,11 +11,13 @@ import {
 
 const TODAY = '2026-11-09'
 const SINCE = '2026-11-01'
+const MIN = 60_000
 
-const total = (userId: string, day: string, totalMs: number): DailyTotal => ({
+const total = (userId: string, day: string, totalMs: number, focusMs = 0): DailyTotal => ({
   userId,
   day,
   totalMs,
+  focusMs,
 })
 
 describe('dates', () => {
@@ -164,6 +166,41 @@ describe('headToHead', () => {
     expect(recent).toHaveLength(7)
     expect(recent[0].day).toBe(TODAY)
     expect(recent[6].day).toBe('2026-11-03')
+  })
+})
+
+describe('focus time', () => {
+  const people = [
+    { id: 'me', name: 'Me' },
+    { id: 'zach', name: 'Zach' },
+  ]
+
+  it('shows beside today\'s standings but never changes the ranking', () => {
+    const rows = dailyStandings(
+      [total('me', TODAY, 60 * MIN, 50 * MIN), total('zach', TODAY, 90 * MIN, 10 * MIN)],
+      people,
+      TODAY,
+    )
+    expect(rows.map((r) => [r.id, r.rank, r.focusMs])).toEqual([
+      ['zach', 1, 10 * MIN],
+      ['me', 2, 50 * MIN],
+    ])
+  })
+
+  it('sums since the friendship began, like total time', () => {
+    const h = headToHead(
+      [
+        total('me', addDays(SINCE, -1), 60 * MIN, 60 * MIN),
+        total('me', SINCE, 60 * MIN, 30 * MIN),
+        total('me', TODAY, 60 * MIN, 20 * MIN),
+        total('zach', SINCE, 60 * MIN),
+      ],
+      'me',
+      'zach',
+      SINCE,
+      TODAY,
+    )
+    expect([h.myFocusMs, h.theirFocusMs]).toEqual([50 * MIN, 0])
   })
 })
 

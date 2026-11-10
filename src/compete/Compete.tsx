@@ -23,6 +23,7 @@ import {
   type DailyTotal,
 } from './stats'
 import Avatar from '../Avatar'
+import Experimental from '../focus/Experimental'
 import './Compete.css'
 
 const REFRESH_MS = 60_000
@@ -165,6 +166,14 @@ function FriendCard({
             <th scope="row">Total time</th>
             <td>{formatStudyTime(h.myTotalMs)}</td>
             <td>{formatStudyTime(h.theirTotalMs)}</td>
+          </tr>
+          <tr>
+            <th scope="row" className="focus-row">
+              Focus time
+              <Experimental />
+            </th>
+            <td>{formatStudyTime(h.myFocusMs)}</td>
+            <td>{formatStudyTime(h.theirFocusMs)}</td>
           </tr>
           <tr>
             <th scope="row">Streak</th>
@@ -438,6 +447,16 @@ export default function Compete() {
 
           <section className="compete-section">
             <h2>Today</h2>
+            <div className="standing standing-head" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+              <span>Total</span>
+              <span>
+                Focus
+                <Experimental />
+              </span>
+            </div>
             <ol className="standings">
               {standings.map((s) => (
                 <li
@@ -452,11 +471,16 @@ export default function Compete() {
                     {s.id === board.profile.id ? 'You' : s.name}
                   </span>
                   <span className="standing-time">{formatStudyTime(s.totalMs)}</span>
+                  <span className="standing-focus" aria-label={`${formatStudyTime(s.focusMs)} focused, experimental`}>
+                    {formatStudyTime(s.focusMs)}
+                  </span>
                 </li>
               ))}
             </ol>
             <p className="compete-note">
               Sessions count once you press Stop, toward the day they started.
+              Focus time counts the sessions you analyze on the Sessions page. It
+              doesn't decide who wins.
             </p>
           </section>
 

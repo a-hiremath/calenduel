@@ -3,7 +3,8 @@
 // and the policies in db/migrations decide what that user may do.
 
 import { createClient } from '@neondatabase/neon-js'
-import { listSessions } from '../db'
+import { listSessions, type SessionMeta } from '../db'
+import { summarizeFocus } from '../focus/types'
 import { localDay, type DailyTotal } from './stats'
 
 const neon = createClient({
@@ -134,9 +135,14 @@ export async function removeFriend(friendId: string): Promise<void> {
 export async function fetchDailyTotals(): Promise<DailyTotal[]> {
   const { data, error } = await neon.rpc('daily_totals')
   if (error) fail(error)
-  return (data as { user_id: string; day: string; total_ms: number }[]).map(
-    (r) => ({ userId: r.user_id, day: r.day, totalMs: r.total_ms }),
-  )
+  return (
+    data as { user_id: string; day: string; total_ms: number; focus_ms: number }[]
+  ).map((r) => ({
+    userId: r.user_id,
+    day: r.day,
+    totalMs: r.total_ms,
+    focusMs: r.focus_ms,
+  }))
 }
 
 // The server returns at most this many, newest first.
@@ -150,18 +156,37 @@ export async function fetchFriendSessions(friendId: string): Promise<FriendSessi
   )
 }
 
+// Experimental: on-task time from the session's current analysis, or null if
+// it hasn't been analyzed under its current name. Capped at the uploaded length.
+function focusMs(s: SessionMeta): number | null {
+  if (!s.focus || s.focus.task !== s.task) return null
+  return Math.min(Math.round(summarizeFocus(s.focus.samples).onMs), Math.round(s.elapsedMs))
+}
+
 // Uploads local sessions the server doesn't have yet and returns how many it
 // couldn't upload. Anything missed is retried next time, so a session recorded
-// offline or before signing in still counts. Only times are sent, never clips.
+// offline or before signing in still counts. Only times are sent, never clips
+// or names.
 export async function syncSessions(): Promise<number> {
   if (!(await isSignedIn())) return 0
 
-  const { data, error } = await neon.from('study_sessions').select('id')
+  const { data, error } = await neon.from('study_sessions').select('id, focus_ms')
   if (error) fail(error)
-  const uploaded = new Set((data as { id: string }[]).map((r) => r.id))
+  const uploaded = new Map(
+    (data as { id: string; focus_ms: number | null }[]).map((r) => [r.id, r.focus_ms]),
+  )
 
-  const pending = (await listSessions()).filter(
-    (s) => !uploaded.has(s.id) && s.elapsedMs <= MAX_SESSION_MS,
+  const local = (await listSessions()).filter((s) => s.elapsedMs <= MAX_SESSION_MS)
+  const pending = local.filter((s) => !uploaded.has(s.id))
+
+  // Analysis, corrections and renames all happen after upload. A failed update
+  // is simply tried again next time: it can't stop the session counting.
+  await Promise.all(
+    local
+      .filter((s) => uploaded.has(s.id) && uploaded.get(s.id) !== focusMs(s))
+      .map((s) =>
+        neon.from('study_sessions').update({ focus_ms: focusMs(s) }).eq('id', s.id),
+      ),
   )
 
   // One at a time, because a batch insert would let a single rejected session
@@ -173,6 +198,7 @@ export async function syncSessions(): Promise<number> {
         day: localDay(s.startedAt),
         started_at: new Date(s.startedAt).toISOString(),
         elapsed_ms: Math.round(s.elapsedMs),
+        focus_ms: focusMs(s),
       }),
     ),
   )

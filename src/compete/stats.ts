@@ -5,6 +5,7 @@ export interface DailyTotal {
   userId: string
   day: string // YYYY-MM-DD
   totalMs: number
+  focusMs: number // experimental: the part of analyzed sessions judged on task
 }
 
 export interface Person {
@@ -15,6 +16,7 @@ export interface Person {
 export interface Standing extends Person {
   rank: number
   totalMs: number
+  focusMs: number
 }
 
 export interface DayComparison {
@@ -29,6 +31,8 @@ export interface HeadToHead {
   ties: number
   myTotalMs: number
   theirTotalMs: number
+  myFocusMs: number
+  theirFocusMs: number
   myStreak: number
   theirStreak: number
   recent: DayComparison[] // newest first, today included
@@ -60,6 +64,13 @@ function totalsFor(totals: DailyTotal[], userId: string): Map<string, number> {
   return byDay
 }
 
+// Focus time never decides a day, so it is only ever summed beside the totals.
+function focusSince(totals: DailyTotal[], userId: string, since: string): number {
+  let ms = 0
+  for (const t of totals) if (t.userId === userId && t.day >= since) ms += t.focusMs
+  return ms
+}
+
 // Today's leaderboard, most time first. People level on time share a rank.
 export function dailyStandings(
   totals: DailyTotal[],
@@ -67,7 +78,10 @@ export function dailyStandings(
   today: string,
 ): Standing[] {
   const rows = people
-    .map((p) => ({ ...p, totalMs: totalsFor(totals, p.id).get(today) ?? 0 }))
+    .map((p) => {
+      const day = totals.find((t) => t.userId === p.id && t.day === today)
+      return { ...p, totalMs: day?.totalMs ?? 0, focusMs: day?.focusMs ?? 0 }
+    })
     .sort((a, b) => b.totalMs - a.totalMs)
 
   let rank = 0
@@ -136,6 +150,8 @@ export function headToHead(
     ties,
     myTotalMs,
     theirTotalMs,
+    myFocusMs: focusSince(totals, myId, since),
+    theirFocusMs: focusSince(totals, theirId, since),
     myStreak: currentStreak(new Set(mine.keys()), today),
     theirStreak: currentStreak(new Set(theirs.keys()), today),
     recent,
