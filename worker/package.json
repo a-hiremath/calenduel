@@ -1,0 +1,8 @@
+{
+  "name": "calenduel-focus",
+  "private": true,
+  "type": "module",
+  "scripts": { "deploy": "wrangler deploy", "test": "node --test node-tests/*.check.js" },
+  "dependencies": { "jose": "^6.1.0" },
+  "devDependencies": { "wrangler": "^4.0.0" }
+}

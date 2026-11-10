@@ -1,3 +1,5 @@
+import type { FocusResult } from './focus/types'
+
 const DB_NAME = 'calenduel'
 const DB_VERSION = 1
 
@@ -12,6 +14,7 @@ export interface SessionMeta {
   goalMs: number
   elapsedMs: number
   hasClip: boolean
+  focus?: FocusResult
 }
 
 function promisify<T>(req: IDBRequest<T>): Promise<T> {
@@ -102,9 +105,23 @@ export async function renameSession(id: string, task: string): Promise<void> {
   // itself once it's left idle, which awaiting the read first would risk.
   const read = store.get(id)
   read.onsuccess = () => {
-    if (read.result) store.put({ ...read.result, task })
+    if (read.result) store.put({ ...read.result, task, focus: undefined })
   }
   await awaitTransaction(tx)
+}
+
+export async function saveFocus(id: string, focus: FocusResult): Promise<void> {
+  const db = await openDb()
+  const tx = db.transaction('sessions', 'readwrite')
+  const store = tx.objectStore('sessions')
+  let stale = false
+  const read = store.get(id)
+  read.onsuccess = () => {
+    if (!read.result || read.result.task !== focus.task) { stale = true; return }
+    store.put({ ...read.result, focus })
+  }
+  await awaitTransaction(tx)
+  if (stale) throw new Error('The session changed during analysis. Please analyze it again.')
 }
 
 export async function deleteSession(id: string): Promise<void> {

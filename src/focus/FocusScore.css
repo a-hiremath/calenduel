@@ -1,0 +1,15 @@
+.focus-score { grid-column: 1 / -1; font-size: 12px; color: var(--text); }
+.focus-score summary { cursor: pointer; list-style: none; width: fit-content; color: var(--text-h); }
+.focus-score summary::-webkit-details-marker { display: none; }
+.focus-score summary > span:first-child { color: #b18a48; }
+.focus-experimental { margin-left: .5rem; color: var(--text); font-size: 10px; }
+.focus-score p { line-height: 1.6; margin: .65rem 0; }
+.focus-timeline { display: flex; width: 100%; gap: 1px; height: 22px; margin: .75rem 0; }
+.focus-segment { min-width: 0; flex-basis: 0; border: 0; border-radius: 0; padding: 0; cursor: pointer; background: var(--border-strong); }
+.focus-segment.on_task { background: #457860; }
+.focus-segment.unclear { background: #b18a48; }
+.focus-segment[aria-pressed=true] { outline: 2px solid var(--text-h); outline-offset: 2px; z-index: 1; }
+.focus-legend { font-size: 10px; }
+.focus-correct { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+.focus-correct button { font: inherit; color: var(--text); border: 1px solid var(--border-strong); border-radius: 4px; background: transparent; padding: 4px 6px; cursor: pointer; }
+.focus-correct button[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
