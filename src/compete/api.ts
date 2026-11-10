@@ -46,6 +46,12 @@ export async function isSignedIn(): Promise<boolean> {
   return Boolean(data?.session)
 }
 
+export async function focusToken(): Promise<string | null> {
+  const { data, error } = await neon.auth.getSession()
+  if (error) fail(error)
+  return data?.session?.token ?? null
+}
+
 // Leaves the page for Google, then returns to the Compete tab. Anything already
 // in the URL, like an invite code, survives the round trip.
 export async function signIn(): Promise<void> {

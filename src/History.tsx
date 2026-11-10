@@ -9,6 +9,7 @@ import {
 } from './db'
 import { downloadBlob, timelapseName } from './media/share'
 import './History.css'
+import FocusScore from './focus/FocusScore'
 
 function formatDate(ms: number): string {
   return new Date(ms).toLocaleDateString([], {
@@ -153,6 +154,7 @@ function SessionCard({ session, onChanged }: { session: SessionMeta; onChanged: 
           Delete
         </button>
       </div>
+      <FocusScore session={session} onChanged={onChanged} />
     </li>
   )
 }
