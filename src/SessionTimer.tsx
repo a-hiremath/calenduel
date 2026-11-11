@@ -53,7 +53,7 @@ export default function SessionTimer({
   // Destructured into locals: the refs lint rule can't classify properties read
   // off the returned object, but a bare ref passed to a ref prop is fine.
   // onInterrupted = stop the session if the browser's "Stop sharing" is hit.
-  const { faceVideoRef, streaming, begin, addIpad, hasIpad, end } =
+  const { faceVideoRef, streaming, begin, addIpad, ipadStream, end } =
     useTimelapseRecorder(() => handleStop())
   // Guards the stop path against firing twice (Stop button + screen-share end).
   const stoppingRef = useRef(false)
@@ -209,7 +209,8 @@ export default function SessionTimer({
           preview of your own screen reflects itself forever. Shown whenever
           the feeds are live (running + encoding). */}
       {streaming && (
-        <div className="session-stage">
+        <div className="session-stage" data-ipad={ipadStream !== null}>
+          {ipadStream && <StreamPreview stream={ipadStream} className="session-ipad" />}
           <video
             ref={faceVideoRef}
             className="session-face"
@@ -258,7 +259,7 @@ export default function SessionTimer({
 
         {/* A second share for one window (QuickTime mirroring the iPad). Its own
             click, since the picker needs a fresh user gesture. */}
-        {status === 'running' && !hasIpad && (
+        {status === 'running' && !ipadStream && (
           <button type="button" className="session-link" onClick={() => void addIpad()}>
             Add iPad
           </button>
@@ -319,4 +320,21 @@ export default function SessionTimer({
       {error && <p className="error">{error}</p>}
     </section>
   )
+}
+
+// Plays a live stream in a <video>. srcObject can't be set as a JSX prop, so it's
+// attached after mount. One stream can feed several <video>s at once, so this
+// preview doesn't disturb the hidden copy the timelapse samples from.
+function StreamPreview({ stream, className }: { stream: MediaStream; className: string }) {
+  const ref = useRef<HTMLVideoElement>(null)
+  useEffect(() => {
+    const video = ref.current
+    if (!video) return
+    video.srcObject = stream
+    void video.play().catch(() => {})
+    return () => {
+      video.srcObject = null
+    }
+  }, [stream])
+  return <video ref={ref} className={className} autoPlay playsInline muted />
 }

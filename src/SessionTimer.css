@@ -101,6 +101,30 @@
   display: block;
 }
 
+/* With the iPad attached, the stage doubles in width: iPad on the left, face on
+   the right, so you can see both feeds are live. */
+.session[data-focus='true'] .session-stage[data-ipad='true'] {
+  width: clamp(16rem, 40vw, 30rem);
+  aspect-ratio: 8 / 3;
+}
+
+.session-stage[data-ipad='true'] {
+  display: flex;
+}
+
+.session-stage[data-ipad='true'] > video {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Whole iPad screen visible (letterboxed), not cropped, and not mirrored. */
+.session-ipad {
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  display: block;
+}
+
 /* ── Buttons ───────────────────────────────────────────────────────── */
 .session-actions {
   display: flex;

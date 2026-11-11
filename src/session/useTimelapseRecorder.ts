@@ -31,8 +31,9 @@ export interface RecorderHandle {
   // Add a second shared window (e.g. QuickTime mirroring an iPad) mid-session.
   // Call straight from a click. Cancelling the picker is a no-op, not an error.
   addIpad: () => Promise<void>
-  // True while that second window is being captured.
-  hasIpad: boolean
+  // The second window's stream while it's captured (null otherwise), for the
+  // on-page preview.
+  ipadStream: MediaStream | null
   // Stop recording, release both streams, and resolve with the timelapse clip
   // or the reason there isn't one.
   end: () => Promise<TimelapseResult>
@@ -194,7 +195,7 @@ export function useTimelapseRecorder(onInterrupted: () => void): RecorderHandle 
     streaming: streams !== null,
     begin,
     addIpad,
-    hasIpad: ipad !== null,
+    ipadStream: ipad,
     end,
   }
 }
