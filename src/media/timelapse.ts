@@ -47,6 +47,8 @@ const CODECS: { codec: string; muxer: 'avc' | 'vp9' }[] = [
 const INSET_FRACTION = 0.25
 const INSET_MARGIN = 16
 const INSET_BORDER = 3
+// Gap between the laptop screen and the iPad when both are in the frame.
+const PANE_GAP = 16
 
 export interface TimelapseResult {
   clip: Blob | null
@@ -85,12 +87,17 @@ function fitDimensions(w: number, h: number): { width: number; height: number } 
   }
 }
 
-// Begin sampling composite frames from two live <video> elements (the shared
-// screen and the webcam face), encoding each one as it's captured. Returns a
-// handle whose stop() flushes and produces the clip.
+// Begin sampling composite frames from live <video> elements (the shared
+// screen and the webcam face, plus an optional second window such as a mirrored
+// iPad), encoding each one as it's captured. Returns a handle whose stop()
+// flushes and produces the clip.
+//
+// getExtra is read every tick because the second window can be added or
+// dropped mid-session; null means "screen only".
 export function startTimelapse(
   face: HTMLVideoElement,
   screen: HTMLVideoElement,
+  getExtra: () => HTMLVideoElement | null = () => null,
 ): TimelapseRecorder {
   // Encoder + muxer are built lazily on the first frame that actually has
   // pixels: configure() needs real dimensions, and the feed reports 0×0 until
@@ -168,6 +175,30 @@ export function startTimelapse(
     ctx.drawImage(face, x, y, insetW, insetH)
   }
 
+  // The canvas size is fixed at setup (from the laptop screen), but the second
+  // window can show up later with any shape. So with both present, scale them to
+  // one shared height and centre the pair inside the existing frame, letterboxed
+  // in black, rather than resizing the video mid-stream.
+  function drawSideBySide(extra: HTMLVideoElement) {
+    const W = scratch.width
+    const H = scratch.height
+    const aw = screen.videoWidth
+    const ah = screen.videoHeight
+    const bw = extra.videoWidth
+    const bh = extra.videoHeight
+    // Pick the shared height h: each pane's width is h × its aspect ratio, and
+    // together (plus the gap) they must fit W, while h itself must fit H.
+    const h = Math.min(H, (W - PANE_GAP) / (aw / ah + bw / bh))
+    const leftW = h * (aw / ah)
+    const rightW = h * (bw / bh)
+    const x = (W - (leftW + PANE_GAP + rightW)) / 2
+    const y = (H - h) / 2
+    ctx.fillStyle = '#000'
+    ctx.fillRect(0, 0, W, H)
+    ctx.drawImage(screen, x, y, leftW, h)
+    ctx.drawImage(extra, x + leftW + PANE_GAP, y, rightW, h)
+  }
+
   let timer: ReturnType<typeof setInterval> | null = setInterval(() => {
     if (!screen.videoWidth) return // canvas size comes from the screen feed
     if (!encoder) {
@@ -184,7 +215,9 @@ export function startTimelapse(
       stopSampling()
       return
     }
-    ctx.drawImage(screen, 0, 0, scratch.width, scratch.height)
+    const extra = getExtra()
+    if (extra?.videoWidth) drawSideBySide(extra) // has pixels yet?
+    else ctx.drawImage(screen, 0, 0, scratch.width, scratch.height)
     if (face.videoWidth) drawFaceInset() // skip the inset until the camera has pixels
     const frame = new VideoFrame(scratch, {
       timestamp: frameCount * FRAME_DURATION_US,

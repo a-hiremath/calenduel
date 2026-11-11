@@ -23,6 +23,19 @@ export async function startScreen(): Promise<MediaStream> {
   return navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
 }
 
+// A second, independent share for a single window — e.g. QuickTime mirroring an
+// iPad. displaySurface is only a hint (the picker opens on its Windows tab);
+// the user can still pick anything. Same user-gesture rule as startScreen.
+export async function startWindow(): Promise<MediaStream> {
+  if (!navigator.mediaDevices?.getDisplayMedia) {
+    throw new Error('Screen capture is not supported in this browser')
+  }
+  return navigator.mediaDevices.getDisplayMedia({
+    video: { displaySurface: 'window' },
+    audio: false,
+  })
+}
+
 // Stop every track so the OS releases the camera and the indicator light turns
 // off. A MediaStream stays "live" until each of its tracks is individually
 // stopped — dropping the reference alone is not enough.

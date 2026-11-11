@@ -53,7 +53,7 @@ export default function SessionTimer({
   // Destructured into locals: the refs lint rule can't classify properties read
   // off the returned object, but a bare ref passed to a ref prop is fine.
   // onInterrupted = stop the session if the browser's "Stop sharing" is hit.
-  const { faceVideoRef, streaming, begin, end } =
+  const { faceVideoRef, streaming, begin, addIpad, hasIpad, end } =
     useTimelapseRecorder(() => handleStop())
   // Guards the stop path against firing twice (Stop button + screen-share end).
   const stoppingRef = useRef(false)
@@ -253,6 +253,14 @@ export default function SessionTimer({
         {status === 'running' && (
           <button type="button" className="session-stop" onClick={handleStop}>
             Stop
+          </button>
+        )}
+
+        {/* A second share for one window (QuickTime mirroring the iPad). Its own
+            click, since the picker needs a fresh user gesture. */}
+        {status === 'running' && !hasIpad && (
+          <button type="button" className="session-link" onClick={() => void addIpad()}>
+            Add iPad
           </button>
         )}
 
