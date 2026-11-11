@@ -325,16 +325,36 @@ export default function SessionTimer({
 // Plays a live stream in a <video>. srcObject can't be set as a JSX prop, so it's
 // attached after mount. One stream can feed several <video>s at once, so this
 // preview doesn't disturb the hidden copy the timelapse samples from.
+//
+// The tile takes the stream's own shape (read once frames arrive, and again if
+// the shared window is resized), so the picture fills it with no black bars.
 function StreamPreview({ stream, className }: { stream: MediaStream; className: string }) {
   const ref = useRef<HTMLVideoElement>(null)
+  const [aspect, setAspect] = useState<number | null>(null)
   useEffect(() => {
     const video = ref.current
     if (!video) return
+    const measure = () => {
+      if (video.videoWidth) setAspect(video.videoWidth / video.videoHeight)
+    }
+    video.addEventListener('loadedmetadata', measure)
+    video.addEventListener('resize', measure)
     video.srcObject = stream
     void video.play().catch(() => {})
     return () => {
+      video.removeEventListener('loadedmetadata', measure)
+      video.removeEventListener('resize', measure)
       video.srcObject = null
     }
   }, [stream])
-  return <video ref={ref} className={className} autoPlay playsInline muted />
+  return (
+    <video
+      ref={ref}
+      className={className}
+      style={aspect ? { aspectRatio: String(aspect) } : undefined}
+      autoPlay
+      playsInline
+      muted
+    />
+  )
 }

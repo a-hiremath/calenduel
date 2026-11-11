@@ -101,26 +101,31 @@
   display: block;
 }
 
-/* With the iPad attached, the stage doubles in width: iPad on the left, face on
-   the right, so you can see both feeds are live. */
+/* With the iPad attached the stage keeps the face tile's height and grows
+   sideways: iPad on the left at its own shape (set inline from the stream),
+   face on the right at 4:3, so neither tile needs black bars. */
 .session[data-focus='true'] .session-stage[data-ipad='true'] {
-  width: clamp(16rem, 40vw, 30rem);
-  aspect-ratio: 8 / 3;
-}
-
-.session-stage[data-ipad='true'] {
+  width: auto;
+  aspect-ratio: auto;
+  height: calc(clamp(8rem, 20vw, 15rem) * 3 / 4);
   display: flex;
 }
 
 .session-stage[data-ipad='true'] > video {
-  flex: 1;
-  min-width: 0;
+  flex: none;
+  height: 100%;
+  width: auto;
 }
 
-/* Whole iPad screen visible (letterboxed), not cropped, and not mirrored. */
+.session-stage[data-ipad='true'] > .session-face {
+  aspect-ratio: 4 / 3;
+}
+
+/* Not mirrored: it's a screen, not a selfie. Until its shape is known, a 4:3
+   placeholder. */
 .session-ipad {
-  height: 100%;
-  object-fit: contain;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
   background: #000;
   display: block;
 }
