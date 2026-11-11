@@ -210,7 +210,6 @@ export default function SessionTimer({
           the feeds are live (running + encoding). */}
       {streaming && (
         <div className="session-stage" data-ipad={ipadStream !== null}>
-          {ipadStream && <StreamPreview stream={ipadStream} className="session-ipad" />}
           <video
             ref={faceVideoRef}
             className="session-face"
@@ -218,6 +217,8 @@ export default function SessionTimer({
             playsInline
             muted
           />
+          {/* Below the face: you look down at the iPad. */}
+          {ipadStream && <StreamPreview stream={ipadStream} className="session-ipad" />}
         </div>
       )}
 

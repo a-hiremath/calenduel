@@ -101,29 +101,22 @@
   display: block;
 }
 
-/* With the iPad attached the stage keeps the face tile's height and grows
-   sideways: iPad on the left at its own shape (set inline from the stream),
-   face on the right at 4:3, so neither tile needs black bars. */
+/* With the iPad attached the stage keeps its width and grows taller (upward,
+   since it's pinned to the bottom): face on top at 4:3, iPad underneath at its
+   own shape (set inline from the stream), so neither tile needs black bars. */
 .session[data-focus='true'] .session-stage[data-ipad='true'] {
-  width: auto;
   aspect-ratio: auto;
-  height: calc(clamp(8rem, 20vw, 15rem) * 3 / 4);
-  display: flex;
-}
-
-.session-stage[data-ipad='true'] > video {
-  flex: none;
-  height: 100%;
-  width: auto;
 }
 
 .session-stage[data-ipad='true'] > .session-face {
+  height: auto;
   aspect-ratio: 4 / 3;
 }
 
 /* Not mirrored: it's a screen, not a selfie. Until its shape is known, a 4:3
    placeholder. */
 .session-ipad {
+  width: 100%;
   aspect-ratio: 4 / 3;
   object-fit: cover;
   background: #000;
