@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
-import { DEFAULT_SESSION_NAME, getClip, saveFocus, type SessionMeta } from '../db'
-import { analyzeFocus } from './analyze'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { DEFAULT_SESSION_NAME, saveFocus, type SessionMeta } from '../db'
+import { dismiss, getJob, startAnalysis, subscribe } from './jobs'
 import { summarizeFocus, type FocusChoice, type FocusResult } from './types'
 import './FocusScore.css'
 
@@ -8,37 +8,28 @@ export default function FocusScore({ session, onChanged }: {
   session: SessionMeta; onChanged: () => void
 }) {
   const [consent, setConsent] = useState(false)
-  const [progress, setProgress] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<number | null>(null)
-  const controller = useRef<AbortController | null>(null)
-  useEffect(() => () => controller.current?.abort(), [])
+  // The job lives in jobs.ts, so it keeps going while this card is unmounted.
+  const job = useSyncExternalStore(subscribe, () => getJob(session.id))
+  const progress = job?.status === 'running' ? job.progress : null
+  const shownError = error ?? (job?.status === 'failed' ? job.error : null)
+  // A finished job clears itself; reload so the saved result shows up.
+  const wasRunning = useRef(false)
+  useEffect(() => {
+    if (wasRunning.current && !job) onChanged()
+    wasRunning.current = job?.status === 'running'
+  }, [job, onChanged])
   const focus = session.focus?.task === session.task ? session.focus : undefined
   const summary = focus ? summarizeFocus(focus.samples) : null
   const named = session.task.trim() !== '' && session.task !== DEFAULT_SESSION_NAME
   const hasIpad = session.layout?.some(span => span.ipad !== null) ?? false
 
-  async function analyze() {
+  function analyze() {
     setError(null)
-    const abort = new AbortController()
-    controller.current = abort
-    setProgress('Reading recording…')
-    try {
-      const clip = await getClip(session.id)
-      if (!clip) throw new Error('This session has no recording to analyze.')
-      const result = await analyzeFocus(clip, session.task, session.elapsedMs,
-        (done, total) => setProgress(`Analyzing ${done}/${total}…`), abort.signal,
-        session.layout)
-      abort.signal.throwIfAborted()
-      await saveFocus(session.id, result)
-      onChanged()
-      setConsent(false)
-    } catch (e) {
-      if (!abort.signal.aborted) setError(e instanceof Error ? e.message : 'Analysis failed.')
-    } finally {
-      setProgress(null)
-      controller.current = null
-    }
+    dismiss(session.id)
+    setConsent(false)
+    startAnalysis(session.id, session.task, session.elapsedMs, session.layout)
   }
 
   async function override(choice: FocusChoice) {
@@ -92,10 +83,11 @@ export default function FocusScore({ session, onChanged }: {
             <button type="button" className="history-btn" onClick={() => setConsent(false)}>Cancel</button>
           </div>}
         </>}
-        {progress && <p role="status">{progress}{' '}
-          <button type="button" className="history-btn" onClick={() => controller.current?.abort()}>Cancel</button>
+        {progress && <p role="status">{progress} You can switch pages, just keep this tab open.{' '}
+          <button type="button" className="history-btn"
+            onClick={() => job?.status === 'running' && job.cancel()}>Cancel</button>
         </p>}
-        {error && <p className="history-error" role="alert">{error}</p>}
+        {shownError && <p className="history-error" role="alert">{shownError}</p>}
       </details>
     </div>
   )
