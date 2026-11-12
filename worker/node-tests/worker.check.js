@@ -99,9 +99,11 @@ test('valid signed requests are bounded, rate limited, and return only decisions
     assert.equal(response.status, 400) // one image over 400k characters
     response = await worker.fetch(request({ ...body, image: 'x'.repeat(900_000) }), env)
     assert.equal(response.status, 413)
+    assert.equal((await response.json()).error, 'Frame too large')
     env.LIMITER.limit = async () => ({ success: false })
     response = await worker.fetch(request(body), env)
     assert.equal(response.status, 429)
+    assert.equal((await response.json()).error, 'Too many frames. Please try again in a minute.')
     assert.equal(calls, 3)
   } finally { server.close() }
 })

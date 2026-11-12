@@ -1,5 +1,6 @@
 import type { FocusResult } from './focus/types'
 import type { LayoutSpan } from './media/timelapse'
+import type { SubjectTag, SubjectUpdate } from './subjects/subjects'
 
 const DB_NAME = 'calenduel'
 const DB_VERSION = 1
@@ -18,6 +19,8 @@ export interface SessionMeta {
   focus?: FocusResult
   // Where the laptop, iPad and webcam sit in the clip. Missing on older clips.
   layout?: LayoutSpan[]
+  // What the session counts toward in the subject tally (see subjects/).
+  subject?: SubjectTag
 }
 
 function promisify<T>(req: IDBRequest<T>): Promise<T> {
@@ -99,7 +102,9 @@ export async function getClip(id: string): Promise<Blob | null> {
   return blob instanceof Blob ? blob : null
 }
 
-// Names never leave the device, so renaming is purely a local edit.
+// A local edit. (Names leave the device only for focus analysis or, if you
+// turn it on, automatic subjects.) A guessed subject was made for the old
+// name, so it lapses and the session is sorted again; one you set stays.
 export async function renameSession(id: string, task: string): Promise<void> {
   const db = await openDb()
   const tx = db.transaction('sessions', 'readwrite')
@@ -125,6 +130,35 @@ export async function saveFocus(id: string, focus: FocusResult): Promise<void> {
   }
   await awaitTransaction(tx)
   if (stale) throw new Error('The session changed during analysis. Please analyze it again.')
+}
+
+// Write subject changes in one transaction and return how many were applied.
+// A guess (match or model) is skipped if the session was renamed since it was
+// made, or if you have set a subject yourself; your own changes always apply.
+// `subject: undefined` clears a guess but never one of your choices.
+export async function setSubjects(updates: SubjectUpdate[]): Promise<number> {
+  if (updates.length === 0) return 0
+  const db = await openDb()
+  const tx = db.transaction('sessions', 'readwrite')
+  const store = tx.objectStore('sessions')
+  let applied = 0
+  for (const { id, subject } of updates) {
+    const read = store.get(id)
+    read.onsuccess = () => {
+      const current = read.result as SessionMeta | undefined
+      if (!current) return
+      const mine = current.subject?.by === 'you'
+      if (subject === undefined) {
+        if (!current.subject || mine) return
+      } else if (subject.by !== 'you' && (mine || subject.for !== current.task)) {
+        return
+      }
+      store.put({ ...current, subject })
+      applied += 1
+    }
+  }
+  await awaitTransaction(tx)
+  return applied
 }
 
 export async function deleteSession(id: string): Promise<void> {

@@ -1,0 +1,228 @@
+/* ─────────────────────────────────────────────────────────────────
+   Subjects — the per-session field on Sessions and the tally on Account.
+   ───────────────────────────────────────────────────────────────── */
+
+/* ── Field ────────────────────────────────────────────────────── */
+
+.history-subject {
+  margin-top: 0.35rem;
+}
+
+.subject-field {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  max-width: 100%;
+}
+
+/* Reads as a label until hovered or focused, like the session name. */
+.subject-input {
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--accent);
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed transparent;
+  border-radius: 0;
+  padding: 2px 0;
+  margin: -2px 0;
+  min-width: 0;
+  max-width: 100%;
+  cursor: text;
+  transition: border-color 0.2s ease;
+}
+
+/* Chrome draws a dropdown arrow inside inputs with suggestions, which eats
+   the width the text was sized for. Suggestions still show while typing. */
+.subject-input::-webkit-calendar-picker-indicator {
+  display: none !important;
+}
+
+.subject-input::placeholder {
+  color: var(--text-mute);
+}
+
+.subject-input:hover {
+  border-bottom-color: var(--border-strong);
+}
+
+.subject-input:focus-visible {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+
+.subject-auto {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-mute);
+}
+
+/* ── Tally ────────────────────────────────────────────────────── */
+
+.subject-periods {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 1.25rem;
+}
+
+.subject-periods button {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.subject-periods button + button {
+  border-left: 1px solid var(--border-strong);
+}
+
+.subject-periods button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.subject-bars {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.subject-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.3rem;
+}
+
+.subject-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-h);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.subject-time {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-h);
+  white-space: nowrap;
+}
+
+.subject-share {
+  display: inline-block;
+  min-width: 3.2em;
+  text-align: right;
+  color: var(--text);
+}
+
+.subject-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.subject-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.subject-bars .unsorted .subject-name {
+  font-weight: 400;
+  color: var(--text);
+}
+
+.subject-bars .unsorted .subject-bar span {
+  background: var(--border-strong);
+}
+
+/* ── Consent, status, editing ─────────────────────────────────── */
+
+.subject-link {
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.subject-consent {
+  margin-top: 1rem;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.subject-consent p {
+  margin: 0 0 0.75rem;
+}
+
+.subject-edit {
+  margin-top: 1.25rem;
+  font-size: 13px;
+}
+
+.subject-edit summary {
+  cursor: pointer;
+  color: var(--text-h);
+}
+
+.subject-edit-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.75rem 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.subject-edit-list li,
+.subject-add {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.subject-edit-list .subject-input,
+.subject-add .subject-input {
+  width: 100%;
+  font-size: 12.5px;
+  color: var(--text-h);
+  border-bottom-color: var(--border);
+}
+
+.subject-edit-list .subject-about-input,
+.subject-add .subject-about-input {
+  font-family: var(--sans);
+  color: var(--text);
+}
+
+.subject-resort {
+  margin-top: 1rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.subject-resort .account-note {
+  margin: 0;
+}

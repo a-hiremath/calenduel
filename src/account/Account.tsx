@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { listSessions } from '../db'
 import { formatStudyTime, localDay } from '../compete/stats'
 import { ACTIVITY_WEEKS, studyStats, type DayActivity, type StudyStats } from './stats'
+import SubjectTally from '../subjects/SubjectTally'
 import './Account.css'
 
 // Stats come from this device and need no sign-in, so only the profile half
@@ -97,6 +98,11 @@ export default function Account() {
           Counted from the sessions saved on this device, each toward the day it
           started.
         </p>
+      </section>
+
+      <section className="account-section">
+        <h2>Subjects</h2>
+        <SubjectTally />
       </section>
     </main>
   )

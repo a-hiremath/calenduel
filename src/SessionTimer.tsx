@@ -12,6 +12,12 @@ import {
   writeActive,
   type ActiveSession,
 } from './session/activeSession'
+import { sortSessions } from './subjects/sort'
+
+// File a just-saved session under a subject, in the background.
+function sortIntoSubject() {
+  void sortSessions()
+}
 import './SessionTimer.css'
 
 type Status = 'idle' | 'starting' | 'running' | 'encoding' | 'done'
@@ -130,6 +136,7 @@ export default function SessionTimer({
       return
     }
     clearActive()
+    sortIntoSubject()
     setInterrupted(null)
     setNotice(`Saved ${formatStudyTime(elapsedMs)}.`)
     onSessionSaved?.()
@@ -178,6 +185,7 @@ export default function SessionTimer({
       }
     }
 
+    if (saved) sortIntoSubject()
     const validClip = saved && recorded && recorded.size > 0 ? recorded : null
     if (saved) {
       clearActive()

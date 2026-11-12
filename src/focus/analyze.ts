@@ -1,9 +1,7 @@
 import { sampleIntervals, type FocusChoice, type FocusResult } from './types'
 import { changedFraction, facesNear, frameAt, overlaps, spanAt, webcamStrip } from './layout'
 import type { LayoutSpan, Rect } from '../media/timelapse'
-
-// Public endpoint, never an API token. Inference runs behind signed-in auth.
-export const FOCUS_ENDPOINT = 'https://calenduel-focus.calenduel-focus.workers.dev'
+import { FOCUS_ENDPOINT } from './endpoint'
 
 function waitFor(video: HTMLVideoElement, event: string, action: () => void) {
   return new Promise<void>((resolve, reject) => {

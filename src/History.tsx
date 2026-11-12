@@ -10,6 +10,9 @@ import {
 import { downloadBlob, timelapseName } from './media/share'
 import './History.css'
 import FocusScore from './focus/FocusScore'
+import SubjectField, { SubjectOptions } from './subjects/SubjectField'
+import { SUBJECTS_CHANGED, savedNames, sortSessions } from './subjects/sort'
+import { knownSubjects } from './subjects/subjects'
 
 function formatDate(ms: number): string {
   return new Date(ms).toLocaleDateString([], {
@@ -35,7 +38,11 @@ function formatDuration(ms: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`
 }
 
-function SessionCard({ session, onChanged }: { session: SessionMeta; onChanged: () => void }) {
+function SessionCard({ session, subjects, onChanged }: {
+  session: SessionMeta
+  subjects: string[]
+  onChanged: () => void
+}) {
   const [playing, setPlaying] = useState(false)
   const [clipUrl, setClipUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -89,6 +96,7 @@ function SessionCard({ session, onChanged }: { session: SessionMeta; onChanged: 
     if (next === session.task) return
     await renameSession(session.id, next)
     onChanged()
+    void sortSessions() // a guessed subject was for the old name
   }
 
   const metPct = session.goalMs > 0
@@ -133,6 +141,9 @@ function SessionCard({ session, onChanged }: { session: SessionMeta; onChanged: 
         <p className="history-meta">
           {formatDate(session.startedAt)} · {formatTimeOfDay(session.startedAt)}
         </p>
+        <p className="history-subject">
+          <SubjectField session={session} subjects={subjects} />
+        </p>
         <p className="history-stats">
           <span className="history-duration">{formatDuration(session.elapsedMs)}</span>
           {session.goalMs > 0 && (
@@ -171,6 +182,14 @@ export default function History() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { refresh() }, [refresh])
 
+  // Subjects change in the background (the sorter) and from the field itself.
+  useEffect(() => {
+    window.addEventListener(SUBJECTS_CHANGED, refresh)
+    void sortSessions()
+    return () => window.removeEventListener(SUBJECTS_CHANGED, refresh)
+  }, [refresh])
+  const subjects = sessions ? knownSubjects(sessions, savedNames()) : []
+
   return (
     <main className="history">
       <h1>Sessions</h1>
@@ -184,10 +203,11 @@ export default function History() {
       {sessions !== null && sessions.length > 0 && (
         <ul className="history-list">
           {sessions.map((s) => (
-            <SessionCard key={s.id} session={s} onChanged={refresh} />
+            <SessionCard key={s.id} session={s} subjects={subjects} onChanged={refresh} />
           ))}
         </ul>
       )}
+      <SubjectOptions subjects={subjects} />
     </main>
   )
 }

@@ -1,4 +1,5 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose'
+import { SUBJECT_RUBRIC, sortSubjects, validSubjectsInput } from './subjects.js'
 
 export const RUBRIC_VERSION = 'task-v2'
 // Laptop and iPad scored together (a second image). Laptop-only stays task-v2.
@@ -102,16 +103,16 @@ export default {
     }
     const reply = (body, status = 200) => Response.json(body, { status, headers })
     if (request.method === 'GET' && new URL(request.url).pathname === '/health') {
-      return reply({ ok: true, model: 'clef-flash', rubric: RUBRIC_VERSION, ipadRubric: RUBRIC_IPAD })
+      return reply({ ok: true, model: 'clef-flash', rubric: RUBRIC_VERSION, ipadRubric: RUBRIC_IPAD,
+        subjects: SUBJECT_RUBRIC })
     }
     if (!allowed) return reply({ error: 'Origin not allowed' }, 403)
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers })
-    if (request.method !== 'POST' || new URL(request.url).pathname !== '/score') {
-      return reply({ error: 'Not found' }, 404)
-    }
+    const route = ROUTES[new URL(request.url).pathname]
+    if (request.method !== 'POST' || !route) return reply({ error: 'Not found' }, 404)
     // Authenticate before accepting images or spending inference capacity.
     const token = request.headers.get('Authorization')?.match(/^Bearer (\S+)$/)?.[1]
-    if (!token) return reply({ error: 'Sign in to analyze a session.' }, 401)
+    if (!token) return reply({ error: route.messages.signIn }, 401)
     let subject
     try {
       if (!keys.has(env.JWKS_URL)) keys.set(env.JWKS_URL, createRemoteJWKSet(new URL(env.JWKS_URL)))
@@ -121,17 +122,18 @@ export default {
       if (!payload.sub || payload.anonymous === true || payload.isAnonymous === true) throw new Error('No user')
       subject = payload.sub
     } catch {
-      return reply({ error: 'Sign in again to analyze a session.' }, 401)
+      return reply({ error: route.messages.signInAgain }, 401)
     }
-    if (!(await env.LIMITER.limit({ key: subject })).success) {
-      return reply({ error: 'Too many frames. Please try again in a minute.' }, 429)
+    // Separate budgets, so sorting sessions never eats into focus analysis.
+    if (!(await env.LIMITER.limit({ key: `${route.limitKey}:${subject}` })).success) {
+      return reply({ error: route.messages.tooMany }, 429)
     }
     // Read a bounded stream: Content-Length alone is not trustworthy.
     let size = 0
     const chunks = []
     for await (const chunk of request.body ?? []) {
       size += chunk.byteLength
-      if (size > 810_000) return reply({ error: 'Frame too large' }, 413)
+      if (size > route.maxBytes) return reply({ error: route.messages.tooLarge }, 413)
       chunks.push(chunk)
     }
     let body
@@ -141,14 +143,51 @@ export default {
       for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
       body = JSON.parse(new TextDecoder().decode(bytes))
     } catch { return reply({ error: 'Invalid request' }, 400) }
-    if (!validInput(body)) return reply({ error: 'A task and JPEG frame are required.' }, 400)
-    const task = body.task.trim()
-    try {
-      const scored = await scoreFrame(env.AI, task, body)
-      if (!scored) return reply({ error: 'The model could not assess this frame.' }, 502)
-      // Return decisions only. Never persist images, task text, or request bodies.
-      return reply({ choice: scored.choice, probabilities: scored.probabilities,
-        model: 'clef-flash', rubric: scored.rubric, source: scored.source })
-    } catch { return reply({ error: 'Focus analysis is temporarily unavailable.' }, 502) }
+    return route.handle(env, body, reply)
+  },
+}
+
+async function handleSubjects(env, body, reply) {
+  if (!validSubjectsInput(body)) return reply({ error: 'Session names and subjects are required.' }, 400)
+  const input = {
+    titles: body.titles.map(t => t.trim()),
+    subjects: body.subjects.map(s => (typeof s === 'string' ? s.trim()
+      : { name: s.name.trim(), about: (s.about ?? '').trim() })),
+    examples: (body.examples ?? []).map(e => ({ title: e.title.trim(), subject: e.subject.trim() })),
+  }
+  try {
+    const sorted = await sortSubjects(env.AI, input)
+    if (!sorted) return reply({ error: 'The model could not sort these sessions.' }, 502)
+    // Names in, subjects out. Nothing is stored.
+    return reply({ subjects: sorted.subjects, skipped: sorted.skipped, rubric: SUBJECT_RUBRIC })
+  } catch { return reply({ error: 'Sorting is temporarily unavailable.' }, 502) }
+}
+
+async function handleScore(env, body, reply) {
+  if (!validInput(body)) return reply({ error: 'A task and JPEG frame are required.' }, 400)
+  const task = body.task.trim()
+  try {
+    const scored = await scoreFrame(env.AI, task, body)
+    if (!scored) return reply({ error: 'The model could not assess this frame.' }, 502)
+    // Return decisions only. Never persist images, task text, or request bodies.
+    return reply({ choice: scored.choice, probabilities: scored.probabilities,
+      model: 'clef-flash', rubric: scored.rubric, source: scored.source })
+  } catch { return reply({ error: 'Focus analysis is temporarily unavailable.' }, 502) }
+}
+
+const ROUTES = {
+  '/score': {
+    handle: handleScore, maxBytes: 810_000, limitKey: 'focus',
+    messages: {
+      signIn: 'Sign in to analyze a session.', signInAgain: 'Sign in again to analyze a session.',
+      tooMany: 'Too many frames. Please try again in a minute.', tooLarge: 'Frame too large',
+    },
+  },
+  '/subjects': {
+    handle: handleSubjects, maxBytes: 32_000, limitKey: 'subjects',
+    messages: {
+      signIn: 'Sign in to sort sessions.', signInAgain: 'Sign in again to sort sessions.',
+      tooMany: 'Too many requests. Please try again in a minute.', tooLarge: 'Request too large',
+    },
   },
 }
