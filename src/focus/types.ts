@@ -7,6 +7,11 @@ export interface FocusSample {
   originalChoice: FocusChoice
   // Scored from the laptop and the iPad together.
   ipad?: boolean
+  // Which screen's image decided the choice. Only the iPad decides, when it
+  // changed since the previous sample and showed something readable.
+  source?: 'laptop' | 'ipad'
+  // How sure the model was of each choice (0 to 1), as the model returned it.
+  probabilities?: Record<FocusChoice, number>
 }
 
 export interface FocusResult {
@@ -16,6 +21,11 @@ export interface FocusResult {
   // task-v3 when any sample included the iPad; laptop-only samples always use v2.
   rubric: 'task-v2' | 'task-v3'
   samples: FocusSample[]
+}
+
+// A sample's position in the session, as m:ss.
+export function clockOf(atMs: number): string {
+  return `${Math.floor(atMs / 60_000)}:${String(Math.floor(atMs / 1000) % 60).padStart(2, '0')}`
 }
 
 export function summarizeFocus(samples: FocusSample[]) {

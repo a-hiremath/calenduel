@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { DEFAULT_SESSION_NAME, saveFocus, type SessionMeta } from '../db'
 import { dismiss, getJob, startAnalysis, subscribe } from './jobs'
-import { summarizeFocus, type FocusChoice, type FocusResult } from './types'
+import { clockOf, summarizeFocus, type FocusChoice, type FocusResult } from './types'
+import FramePreview from './FramePreview'
 import './FocusScore.css'
 
 export default function FocusScore({ session, onChanged }: {
@@ -52,26 +53,27 @@ export default function FocusScore({ session, onChanged }: {
         </summary>
         <p>Estimates visible activity related to “{session.task}”. It can miss paper work or misread your screen{hasIpad ? 's' : ''}.</p>
         {focus && summary && <>
-          <p>{summary.coverage}% of sampled time assessed · Clef-flash. Tap an interval to correct it.</p>
+          <p>{summary.coverage}% of sampled time assessed · Clef-flash. Tap an interval to see what it judged and correct it.</p>
           <div className="focus-timeline" aria-label="Sampled focus timeline">
             {focus.samples.map((sample, i) => (
               <button key={sample.atMs} type="button"
                 className={`focus-segment ${sample.choice}`}
                 style={{ flexGrow: sample.durationMs }}
-                aria-label={`${Math.floor(sample.atMs / 60_000)}:${String(Math.floor(sample.atMs / 1000) % 60).padStart(2, '0')}: ${sample.choice.replace('_', ' ')}`}
+                aria-label={`${clockOf(sample.atMs)}: ${sample.choice.replace('_', ' ')}`}
                 aria-pressed={selected === i}
                 onClick={() => setSelected(i)} />
             ))}
           </div>
           <p className="focus-legend">Green: on task · muted: off task · amber: unclear</p>
           {selected !== null && <div className="focus-correct">
-            <span>{Math.floor(focus.samples[selected].atMs / 60_000)}:{String(Math.floor(focus.samples[selected].atMs / 1000) % 60).padStart(2, '0')}</span>
+            <span>{clockOf(focus.samples[selected].atMs)}</span>
             {(['on_task', 'off_task', 'unclear'] as const).map(choice =>
               <button type="button" key={choice} onClick={() => override(choice)}
                 aria-pressed={focus.samples[selected].choice === choice}>
                 {choice.replace('_', ' ')}
               </button>)}
           </div>}
+          {selected !== null && <FramePreview session={session} sample={focus.samples[selected]} />}
         </>}
         {!named && <p>Name this session above so the checker knows what you were working on.</p>}
         {named && !progress && <>

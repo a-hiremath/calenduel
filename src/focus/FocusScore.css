@@ -13,3 +13,14 @@
 .focus-correct { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
 .focus-correct button { font: inherit; color: var(--text); border: 1px solid var(--border-strong); border-radius: 4px; background: transparent; padding: 4px 6px; cursor: pointer; }
 .focus-correct button[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
+.focus-frame { margin: .75rem 0 0; }
+.focus-frame figcaption { color: var(--text-h); line-height: 1.6; margin-bottom: .5rem; }
+.focus-frame-images { display: flex; flex-wrap: wrap; align-items: flex-start; gap: .5rem; width: 100%; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: zoom-in; }
+.focus-frame-images[aria-pressed=true] { cursor: zoom-out; }
+.focus-frame-pane { display: flex; flex-direction: column; gap: .25rem; min-width: 0; max-width: 100%; }
+.focus-frame-pane img { display: block; max-width: 100%; max-height: 170px; width: auto; height: auto; border: 1px solid var(--border-strong); border-radius: 4px; }
+.focus-frame-images[aria-pressed=true] .focus-frame-pane img { max-height: none; }
+.focus-frame-pane.decided img { border-color: var(--accent); }
+.focus-frame-label { font-size: 10px; }
+.focus-frame-pane.decided .focus-frame-label { color: var(--accent); }
+.focus-frame-note { font-size: 10px; }
