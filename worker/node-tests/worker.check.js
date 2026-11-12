@@ -43,11 +43,12 @@ test('valid signed requests are bounded, rate limited, and return only decisions
       .setSubject('user').setIssuer(issuer).setAudience(issuer)
       .setExpirationTime('5m').sign(privateKey)
     let calls = 0
+    let lastInput = null
     const env = {
       ALLOWED_ORIGIN: 'https://calenduel.com', AUTH_ISSUER: issuer,
       JWKS_URL: `http://127.0.0.1:${server.address().port}/jwks`,
       LIMITER: { async limit() { return { success: true } } },
-      AI: { async run() { calls++; return { answers: { focus: {
+      AI: { async run(_, input) { calls++; lastInput = input; return { answers: { focus: {
         choice: 'on_task', probabilities: { on_task: .9, off_task: .05, unclear: .05 },
       } } } } },
     }
@@ -63,13 +64,83 @@ test('valid signed requests are bounded, rate limited, and return only decisions
     assert.equal(result.image, undefined)
     assert.equal(result.task, undefined)
     assert.equal(calls, 1)
+    assert.equal(result.rubric, 'task-v2')
+    assert.deepEqual(lastInput.images, [body.image])
+    assert.match(lastInput.state, /Image 1 is the current computer screen/)
+    assert.doesNotMatch(lastInput.state, /iPad/)
+    // Laptop + iPad, iPad changed: the iPad alone decides.
+    const ipad = 'data:image/jpeg;base64,/9j/4A=='
+    response = await worker.fetch(request({ ...body, ipad, ipadChanged: true }), env)
+    assert.equal(response.status, 200)
+    const scored = await response.json()
+    assert.equal(scored.rubric, 'task-v3')
+    assert.equal(scored.source, 'ipad')
+    assert.deepEqual(lastInput.images, [ipad])
+    assert.match(lastInput.state, /iPad screen.*changed since the previous sample/)
+    // First iPad sample (nothing to compare): the laptop decides, as in task-v2.
+    response = await worker.fetch(request({ ...body, ipad, ipadChanged: null }), env)
+    assert.equal(response.status, 200)
+    assert.equal((await response.json()).source, 'laptop')
+    assert.deepEqual(lastInput.images, [body.image])
+    assert.doesNotMatch(lastInput.state, /iPad/)
+    assert.equal(calls, 3)
+    for (const bad of [
+      { ...body, ipad: 'data:image/png;base64,AAAA', ipadChanged: true },
+      { ...body, ipad, ipadChanged: 'yes' },
+      { ...body, ipad },
+    ]) {
+      response = await worker.fetch(request(bad), env)
+      assert.equal(response.status, 400)
+    }
+    assert.equal(calls, 3)
     response = await worker.fetch(request({ ...body, task: 'x'.repeat(61) }), env)
     assert.equal(response.status, 400)
     response = await worker.fetch(request({ ...body, image: 'x'.repeat(500_000) }), env)
+    assert.equal(response.status, 400) // one image over 400k characters
+    response = await worker.fetch(request({ ...body, image: 'x'.repeat(900_000) }), env)
     assert.equal(response.status, 413)
     env.LIMITER.limit = async () => ({ success: false })
     response = await worker.fetch(request(body), env)
     assert.equal(response.status, 429)
-    assert.equal(calls, 1)
+    assert.equal(calls, 3)
   } finally { server.close() }
+})
+
+test('an unclear changed iPad falls back to the laptop; an unchanged one is ignored', async () => {
+  const { scoreFrame } = await import('../src/index.js')
+  const seen = []
+  const answers = { ipad: 'unclear', laptop: 'off_task' }
+  const ai = { async run(_, input) {
+    const which = /iPad/.test(input.state) ? 'ipad' : 'laptop'
+    seen.push(which)
+    return { answers: { focus: { choice: answers[which],
+      probabilities: { on_task: .1, off_task: .1, unclear: .1 } } } }
+  } }
+  const base = { task: 'chem', image: 'data:image/jpeg;base64,AA==', ipad: 'data:image/jpeg;base64,BB==' }
+  let result = await scoreFrame(ai, 'chem', { ...base, ipadChanged: true })
+  assert.deepEqual(seen, ['ipad', 'laptop'])
+  assert.equal(result.choice, 'off_task')
+  assert.equal(result.source, 'laptop')
+  seen.length = 0
+  answers.ipad = 'on_task'
+  result = await scoreFrame(ai, 'chem', { ...base, ipadChanged: false })
+  assert.deepEqual(seen, ['laptop']) // an old notes page never excuses the laptop
+  assert.equal(result.choice, 'off_task')
+  seen.length = 0
+  result = await scoreFrame(ai, 'chem', { ...base, ipadChanged: true })
+  assert.deepEqual(seen, ['ipad'])
+  assert.equal(result.choice, 'on_task')
+  // A malformed iPad answer falls back to the laptop; a malformed laptop answer is no answer.
+  seen.length = 0
+  const flaky = { async run(_, input) {
+    const which = /iPad/.test(input.state) ? 'ipad' : 'laptop'
+    seen.push(which)
+    return which === 'ipad' ? { answers: {} } : { answers: { focus: { choice: 'on_task',
+      probabilities: { on_task: .8, off_task: .1, unclear: .1 } } } }
+  } }
+  result = await scoreFrame(flaky, 'chem', { ...base, ipadChanged: true })
+  assert.deepEqual(seen, ['ipad', 'laptop'])
+  assert.equal(result.source, 'laptop')
+  result = await scoreFrame({ async run() { return { answers: {} } } }, 'chem', base)
+  assert.equal(result, null)
 })

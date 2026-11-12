@@ -53,7 +53,7 @@ export default function SessionTimer({
   // Destructured into locals: the refs lint rule can't classify properties read
   // off the returned object, but a bare ref passed to a ref prop is fine.
   // onInterrupted = stop the session if the browser's "Stop sharing" is hit.
-  const { faceVideoRef, streaming, begin, addIpad, ipadStream, end } =
+  const { faceVideoRef, streaming, begin, addIpad, removeIpad, ipadStream, end } =
     useTimelapseRecorder(() => handleStop())
   // Guards the stop path against firing twice (Stop button + screen-share end).
   const stoppingRef = useRef(false)
@@ -148,14 +148,21 @@ export default function SessionTimer({
     setStatus('encoding')
     // Every step below is allowed to fail, but none may leave Stop hanging:
     // the study time is what matters most, the clip comes second.
-    let { clip: recorded, problem } = await end().catch((e: unknown) => ({
+    const ended = await end().catch((e: unknown) => ({
       clip: null,
       problem: `Recording failed: ${describe(e)}`,
+      layout: [],
     }))
+    let { clip: recorded, problem } = ended
+    const { layout } = ended
     const meta = { startedAt, task, goalMs: 0, elapsedMs: stopAt - startedAt }
     let saved = false
     try {
-      await saveSession(meta, recorded && recorded.size > 0 ? recorded : null)
+      // The layout travels with the clip: focus analysis reads it.
+      await saveSession(
+        recorded && recorded.size > 0 ? { ...meta, layout } : meta,
+        recorded && recorded.size > 0 ? recorded : null,
+      )
       saved = true
     } catch (e) {
       console.error('saving session with clip failed', e)
@@ -263,6 +270,11 @@ export default function SessionTimer({
         {status === 'running' && !ipadStream && (
           <button type="button" className="session-link" onClick={() => void addIpad()}>
             Add iPad
+          </button>
+        )}
+        {status === 'running' && ipadStream && (
+          <button type="button" className="session-link" onClick={removeIpad}>
+            Remove iPad
           </button>
         )}
 

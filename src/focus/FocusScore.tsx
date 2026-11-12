@@ -16,6 +16,7 @@ export default function FocusScore({ session, onChanged }: {
   const focus = session.focus?.task === session.task ? session.focus : undefined
   const summary = focus ? summarizeFocus(focus.samples) : null
   const named = session.task.trim() !== '' && session.task !== DEFAULT_SESSION_NAME
+  const hasIpad = session.layout?.some(span => span.ipad !== null) ?? false
 
   async function analyze() {
     setError(null)
@@ -26,7 +27,8 @@ export default function FocusScore({ session, onChanged }: {
       const clip = await getClip(session.id)
       if (!clip) throw new Error('This session has no recording to analyze.')
       const result = await analyzeFocus(clip, session.task, session.elapsedMs,
-        (done, total) => setProgress(`Analyzing ${done}/${total}…`), abort.signal)
+        (done, total) => setProgress(`Analyzing ${done}/${total}…`), abort.signal,
+        session.layout)
       abort.signal.throwIfAborted()
       await saveFocus(session.id, result)
       onChanged()
@@ -57,7 +59,7 @@ export default function FocusScore({ session, onChanged }: {
             ? `${summary.percent}% focus` : focus ? 'Focus unclear' : 'Focus score'}
           <span className="focus-experimental">Experimental</span>
         </summary>
-        <p>Estimates visible activity related to “{session.task}”. It can miss paper work or misread your screen.</p>
+        <p>Estimates visible activity related to “{session.task}”. It can miss paper work or misread your screen{hasIpad ? 's' : ''}.</p>
         {focus && summary && <>
           <p>{summary.coverage}% of sampled time assessed · Clef-flash. Tap an interval to correct it.</p>
           <div className="focus-timeline" aria-label="Sampled focus timeline">
@@ -85,7 +87,7 @@ export default function FocusScore({ session, onChanged }: {
           {!consent ? <button type="button" className="history-btn" onClick={() => setConsent(true)}>
             {focus ? 'Analyze again' : 'Analyze focus'}
           </button> : <div className="focus-consent">
-            <p>This sends sampled screenshots and the session name to Cloudflare for analysis. The webcam area is hidden. Cloudflare lists zero data retention for this model. Results stay on this device.</p>
+            <p>This sends sampled screenshots{hasIpad ? ' of your laptop and iPad' : ''} and the session name to Cloudflare for analysis. The webcam area is hidden. Cloudflare lists zero data retention for this model. Results stay on this device.</p>
             <button type="button" className="history-btn" onClick={analyze}>Analyze</button>{' '}
             <button type="button" className="history-btn" onClick={() => setConsent(false)}>Cancel</button>
           </div>}

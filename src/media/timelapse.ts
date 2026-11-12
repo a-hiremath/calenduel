@@ -50,10 +50,32 @@ const INSET_BORDER = 3
 // Gap between the laptop screen and the iPad when both are in the frame.
 const PANE_GAP = 16
 
+// Where things sit in the clip's frames, in output pixels. Focus analysis uses
+// it to hide the webcam and to look at the laptop and the iPad separately.
+export interface Rect {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+// One layout, in force from frame `fromFrame` until the next span starts.
+// A frame i is shown at i / PLAYBACK_FPS seconds into the clip.
+export interface LayoutSpan {
+  fromFrame: number
+  screen: Rect
+  ipad: Rect | null
+  face: Rect | null // includes the inset's dark border
+}
+
+export const CLIP_FPS = PLAYBACK_FPS
+
 export interface TimelapseResult {
   clip: Blob | null
   // Why there's no clip, in words the person recording can act on.
   problem: string | null
+  // Layout changes over the clip (empty when there's no clip).
+  layout: LayoutSpan[]
 }
 
 export interface TimelapseRecorder {
@@ -117,6 +139,7 @@ export function startTimelapse(
   // dimensions) so the VideoFrame always matches the encoder's configured size.
   const scratch = document.createElement('canvas')
   const ctx = scratch.getContext('2d')!
+  const layout: LayoutSpan[] = []
 
   async function setup(width: number, height: number) {
     let chosen: (typeof CODECS)[number] | null = null
@@ -159,27 +182,44 @@ export function startTimelapse(
     encoder = enc
   }
 
-  // The webcam, scaled down and dropped into the bottom-right over the screen.
-  function drawFaceInset() {
-    const insetW = Math.round(scratch.width * INSET_FRACTION)
+  // The webcam, scaled down and dropped into the bottom-right of the laptop
+  // screen's area. With the iPad beside it, that keeps the face off the iPad
+  // (your notes) and sized to the laptop pane. Returns the area it covers.
+  function drawFaceInset(over: Rect): Rect {
+    const insetW = Math.round(over.w * INSET_FRACTION)
     const insetH = Math.round(insetW * (face.videoHeight / face.videoWidth))
-    const x = scratch.width - insetW - INSET_MARGIN
-    const y = scratch.height - insetH - INSET_MARGIN
+    const x = Math.round(over.x + over.w - insetW - INSET_MARGIN)
+    const y = Math.round(over.y + over.h - insetH - INSET_MARGIN)
+    const covered = {
+      x: x - INSET_BORDER,
+      y: y - INSET_BORDER,
+      w: insetW + INSET_BORDER * 2,
+      h: insetH + INSET_BORDER * 2,
+    }
     ctx.fillStyle = 'rgba(0, 0, 0, 0.55)'
-    ctx.fillRect(
-      x - INSET_BORDER,
-      y - INSET_BORDER,
-      insetW + INSET_BORDER * 2,
-      insetH + INSET_BORDER * 2,
-    )
+    ctx.fillRect(covered.x, covered.y, covered.w, covered.h)
     ctx.drawImage(face, x, y, insetW, insetH)
+    return covered
+  }
+
+  // Start a new span only when the layout actually changes.
+  function noteLayout(screenRect: Rect, ipadRect: Rect | null, faceRect: Rect | null) {
+    const span = { fromFrame: frameCount, screen: screenRect, ipad: ipadRect, face: faceRect }
+    const last = layout[layout.length - 1]
+    if (
+      last &&
+      JSON.stringify({ ...last, fromFrame: 0 }) === JSON.stringify({ ...span, fromFrame: 0 })
+    ) {
+      return
+    }
+    layout.push(span)
   }
 
   // The canvas size is fixed at setup (from the laptop screen), but the second
   // window can show up later with any shape. So with both present, scale them to
   // one shared height and centre the pair inside the existing frame, letterboxed
   // in black, rather than resizing the video mid-stream.
-  function drawSideBySide(extra: HTMLVideoElement) {
+  function drawSideBySide(extra: HTMLVideoElement): { screen: Rect; ipad: Rect } {
     const W = scratch.width
     const H = scratch.height
     const aw = screen.videoWidth
@@ -193,10 +233,19 @@ export function startTimelapse(
     const rightW = h * (bw / bh)
     const x = (W - (leftW + PANE_GAP + rightW)) / 2
     const y = (H - h) / 2
+    // Whole pixels, so the recorded layout matches what was drawn.
+    const left = { x: Math.round(x), y: Math.round(y), w: Math.round(leftW), h: Math.round(h) }
+    const right = {
+      x: Math.round(x + leftW + PANE_GAP),
+      y: left.y,
+      w: Math.round(rightW),
+      h: left.h,
+    }
     ctx.fillStyle = '#000'
     ctx.fillRect(0, 0, W, H)
-    ctx.drawImage(screen, x, y, leftW, h)
-    ctx.drawImage(extra, x + leftW + PANE_GAP, y, rightW, h)
+    ctx.drawImage(screen, left.x, left.y, left.w, left.h)
+    ctx.drawImage(extra, right.x, right.y, right.w, right.h)
+    return { screen: left, ipad: right }
   }
 
   let timer: ReturnType<typeof setInterval> | null = setInterval(() => {
@@ -216,9 +265,16 @@ export function startTimelapse(
       return
     }
     const extra = getExtra()
-    if (extra?.videoWidth) drawSideBySide(extra) // has pixels yet?
-    else ctx.drawImage(screen, 0, 0, scratch.width, scratch.height)
-    if (face.videoWidth) drawFaceInset() // skip the inset until the camera has pixels
+    let panes: { screen: Rect; ipad: Rect | null }
+    if (extra?.videoWidth) {
+      panes = drawSideBySide(extra) // has pixels yet?
+    } else {
+      panes = { screen: { x: 0, y: 0, w: scratch.width, h: scratch.height }, ipad: null }
+      ctx.drawImage(screen, 0, 0, scratch.width, scratch.height)
+    }
+    // Skip the inset until the camera has pixels.
+    const faceRect = face.videoWidth ? drawFaceInset(panes.screen) : null
+    noteLayout(panes.screen, panes.ipad, faceRect)
     const frame = new VideoFrame(scratch, {
       timestamp: frameCount * FRAME_DURATION_US,
       duration: FRAME_DURATION_US,
@@ -252,10 +308,11 @@ export function startTimelapse(
       stopSampling()
       // Nothing usable: never sampled, or the codec died mid-session — you can't
       // flush a closed encoder, so report why rather than throw.
-      if (problem) return { clip: null, problem }
+      if (problem) return { clip: null, problem, layout: [] }
       if (!encoder || !muxer || encoder.state !== 'configured' || frameCount === 0) {
         return {
           clip: null,
+          layout: [],
           problem: screen.videoWidth
             ? 'The session was too short to record any frames.'
             : 'The shared screen never showed up in the recording, so no timelapse was saved.',
@@ -271,12 +328,16 @@ export function startTimelapse(
       } catch (e) {
         console.error('timelapse finalize error', e)
         const detail = e instanceof Error ? ` ${e.message}` : ''
-        return { clip: null, problem: `Couldn't finish the timelapse video.${detail}` }
+        return { clip: null, problem: `Couldn't finish the timelapse video.${detail}`, layout: [] }
       } finally {
         // An error during flush may already have closed it.
         if ((encoder.state as CodecState) !== 'closed') encoder.close()
       }
-      return { clip: new Blob([muxer.target.buffer], { type: 'video/mp4' }), problem: null }
+      return {
+        clip: new Blob([muxer.target.buffer], { type: 'video/mp4' }),
+        problem: null,
+        layout,
+      }
     },
     cancel() {
       stopSampling()

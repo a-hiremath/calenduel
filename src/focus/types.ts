@@ -5,13 +5,16 @@ export interface FocusSample {
   durationMs: number
   choice: FocusChoice
   originalChoice: FocusChoice
+  // Scored from the laptop and the iPad together.
+  ipad?: boolean
 }
 
 export interface FocusResult {
   task: string
   analyzedAt: number
   model: 'clef-flash'
-  rubric: 'task-v2'
+  // task-v3 when any sample included the iPad; laptop-only samples always use v2.
+  rubric: 'task-v2' | 'task-v3'
   samples: FocusSample[]
 }
 

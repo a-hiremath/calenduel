@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { startCamera, startScreen, startWindow, stopStream } from '../media/capture'
 import {
+  helperEnabled,
+  helperHasIpad,
+  openHelperFeed,
+  type HelperFeed,
+} from '../media/ipadHelper'
+import {
   startTimelapse,
   type TimelapseRecorder,
   type TimelapseResult,
@@ -28,9 +34,12 @@ export interface RecorderHandle {
   // Acquire screen + camera and start recording. Rejects if either is denied,
   // which the caller uses to block the session from starting.
   begin: () => Promise<void>
-  // Add a second shared window (e.g. QuickTime mirroring an iPad) mid-session.
-  // Call straight from a click. Cancelling the picker is a no-op, not an error.
+  // Add the iPad mid-session. Uses the iPad helper when it has one plugged in,
+  // otherwise a second shared window (e.g. QuickTime mirroring an iPad). Call
+  // straight from a click. Cancelling the picker is a no-op, not an error.
   addIpad: () => Promise<void>
+  // Take the iPad out of the frame for the rest of this session.
+  removeIpad: () => void
   // The second window's stream while it's captured (null otherwise), for the
   // on-page preview.
   ipadStream: MediaStream | null
@@ -84,6 +93,19 @@ export function useTimelapseRecorder(onInterrupted: () => void): RecorderHandle 
   // Whether a session is live right now. The iPad picker is async, so the
   // session can end while it's open; this lets addIpad drop a late stream.
   const liveRef = useRef(false)
+  // The current iPad stream, readable from timers and async callbacks.
+  const ipadRef = useRef<MediaStream | null>(null)
+  // The helper feed behind `ipad`, when the iPad came from the helper.
+  const helperFeedRef = useRef<HelperFeed | null>(null)
+  // Set by Remove: the helper won't re-add the iPad until Add is clicked.
+  const dismissedRef = useRef(false)
+  // The helper reported an iPad on its last check (lets Add skip the picker).
+  const helperSeesIpadRef = useRef(false)
+  // Runs one helper check now; set while a session is live.
+  const checkHelperRef = useRef<(() => Promise<void>) | null>(null)
+  useEffect(() => {
+    ipadRef.current = ipad
+  }, [ipad])
 
   // Keep the latest callback in a ref so the track listener (attached once per
   // session) always calls the current handler without re-running the effect.
@@ -137,11 +159,72 @@ export function useTimelapseRecorder(onInterrupted: () => void): RecorderHandle 
       track.removeEventListener('ended', handleEnded)
       ipadVideoRef.current = null
       unmountHiddenVideo(video)
+      if (helperFeedRef.current?.stream === ipad) {
+        helperFeedRef.current.stop() // ends its polling loop too
+        helperFeedRef.current = null
+      }
       stopStream(ipad)
     }
   }, [ipad])
 
+  // The iPad helper, while a session is live: checked at the start and every few
+  // seconds after, so plugging the iPad in mid-session also works. Only runs in
+  // browsers that opted in (see media/ipadHelper.ts).
+  useEffect(() => {
+    if (!streams || !helperEnabled()) return
+    dismissedRef.current = false
+    let cancelled = false
+    let pending: HelperFeed | null = null
+    const check = async () => {
+      if (cancelled || pending || ipadRef.current || dismissedRef.current) return
+      const present = await helperHasIpad()
+      helperSeesIpadRef.current = present
+      if (!present || cancelled || pending || ipadRef.current || dismissedRef.current) return
+      const feed = openHelperFeed(() => {
+        // Unplugged or the helper quit: drop it from the frame, keep the session.
+        if (helperFeedRef.current === feed) setIpad(null)
+      })
+      pending = feed
+      const ok = await feed.ready // waits for the first real frame
+      pending = null
+      if (!ok || cancelled || ipadRef.current || dismissedRef.current) {
+        feed.stop()
+        return
+      }
+      helperFeedRef.current = feed
+      ipadRef.current = feed.stream // before the re-render, so a racing check sees it
+      setIpad(feed.stream)
+    }
+    checkHelperRef.current = check
+    void check()
+    const timer = setInterval(() => void check(), 4000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+      pending?.stop()
+      checkHelperRef.current = null
+      helperSeesIpadRef.current = false
+    }
+  }, [streams])
+
+  const removeIpad = useCallback(() => {
+    dismissedRef.current = true
+    setIpad(null)
+  }, [])
+
   const addIpad = useCallback(async () => {
+    // The helper has the iPad: no picker needed. Re-ask the helper first (a
+    // quick local call): its last answer may predate an unplug. If it has
+    // nothing, fall through to the picker while the click still counts.
+    if (helperSeesIpadRef.current && checkHelperRef.current) {
+      const check = checkHelperRef.current
+      if (await helperHasIpad()) {
+        dismissedRef.current = false
+        await check()
+        return
+      }
+      helperSeesIpadRef.current = false
+    }
     let stream: MediaStream
     try {
       stream = await startWindow()
@@ -178,6 +261,7 @@ export function useTimelapseRecorder(onInterrupted: () => void): RecorderHandle 
       Promise.resolve<TimelapseResult>({
         clip: null,
         problem: 'The recording never started, so no timelapse was saved.',
+        layout: [],
       })
     if (streams) {
       stopStream(streams.face)
@@ -195,6 +279,7 @@ export function useTimelapseRecorder(onInterrupted: () => void): RecorderHandle 
     streaming: streams !== null,
     begin,
     addIpad,
+    removeIpad,
     ipadStream: ipad,
     end,
   }

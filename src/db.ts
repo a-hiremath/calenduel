@@ -1,4 +1,5 @@
 import type { FocusResult } from './focus/types'
+import type { LayoutSpan } from './media/timelapse'
 
 const DB_NAME = 'calenduel'
 const DB_VERSION = 1
@@ -15,6 +16,8 @@ export interface SessionMeta {
   elapsedMs: number
   hasClip: boolean
   focus?: FocusResult
+  // Where the laptop, iPad and webcam sit in the clip. Missing on older clips.
+  layout?: LayoutSpan[]
 }
 
 function promisify<T>(req: IDBRequest<T>): Promise<T> {
