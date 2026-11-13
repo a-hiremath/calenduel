@@ -8,6 +8,7 @@
 .focus-segment { min-width: 0; flex-basis: 0; border: 0; border-radius: 0; padding: 0; cursor: pointer; background: var(--border-strong); }
 .focus-segment.on_task { background: #457860; }
 .focus-segment.unclear { background: #b18a48; }
+.focus-segment.smoothed { background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgba(0, 0, 0, .38) 3px 5px); }
 .focus-segment[aria-pressed=true] { outline: 2px solid var(--text-h); outline-offset: 2px; z-index: 1; }
 .focus-legend { font-size: 10px; }
 .focus-correct { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }

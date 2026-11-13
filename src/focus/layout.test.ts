@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { changedFraction, facesNear, frameAt, overlaps, spanAt, webcamStrip } from './layout'
+import { changedFraction, facesNear, frameAt, overlaps, padRect, spanAt, webcamStrip } from './layout'
 import type { LayoutSpan } from '../media/timelapse'
 
 const full = { x: 0, y: 0, w: 1920, h: 1248 }
@@ -46,7 +46,14 @@ describe('focus layout lookup', () => {
     expect(overlaps({ x: 0, y: 0, w: 10, h: 10 }, { x: 10, y: 0, w: 5, h: 5 })).toBe(false)
   })
 
-  it('keeps the laptop-only strip identical to the old mask', () => {
+  it('pads a face mask past compression smear, inside the frame', () => {
+    expect(padRect(laptopFace, 1920, 1248)).toEqual({ x: 1413, y: 865, w: 502, h: 378 })
+    // At the frame's edge the pad is cut off, never outside the image.
+    expect(padRect({ x: 1910, y: 1240, w: 10, h: 8 }, 1920, 1248)).toEqual({ x: 1902, y: 1232, w: 18, h: 16 })
+    expect(padRect({ x: 2, y: 3, w: 10, h: 10 }, 1920, 1248)).toEqual({ x: 0, y: 0, w: 20, h: 21 })
+  })
+
+  it('keeps the strip for clips without a layout identical to the old mask', () => {
     // Old code: x = W - 0.25W - 16*scale - 4, full height.
     const scale = 1568 / 1920
     const strip = webcamStrip(1568, 1019, scale)

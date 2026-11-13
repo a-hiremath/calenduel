@@ -54,6 +54,7 @@ export async function analyzeFocus(
   try {
     const result: FocusResult = {
       task, analyzedAt: Date.now(), model: 'clef-flash', rubric: 'task-v2', samples: [],
+      mask: layout.some(span => span.face !== null) ? 'face' : 'strip',
     }
     const intervals = sampleIntervals(elapsedMs)
     progress(0, intervals.length)

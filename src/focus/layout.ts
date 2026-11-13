@@ -27,13 +27,24 @@ export function facesNear(layout: LayoutSpan[], frame: number, slack = 2): Rect[
   return faces
 }
 
+// Video compression smears an edge over a few pixels (8x8 blocks, half-size
+// colour), so a face mask reaches this far past the recorded inset.
+export const FACE_PAD = 8
+
+// `r` grown by `pad` on every side, kept inside a width x height frame.
+export function padRect(r: Rect, width: number, height: number, pad = FACE_PAD): Rect {
+  const x = Math.max(0, r.x - pad)
+  const y = Math.max(0, r.y - pad)
+  return { x, y, w: Math.min(width, r.x + r.w + pad) - x, h: Math.min(height, r.y + r.h + pad) - y }
+}
+
 export function overlaps(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
 }
 
-// The strip the analyzer has always blacked out on a laptop screen: the inset's
-// width (25%) plus its margin and border, full height, at the right edge. Kept
-// identical for the laptop pane so its image looks like the validated input.
+// The mask for clips recorded before the layout was saved: the inset's width
+// (25%) plus its margin and border, full height, at the right edge. Those clips
+// don't record the camera's shape, so the inset's height is unknown.
 export function webcamStrip(width: number, height: number, scale = 1): Rect {
   const w = width * 0.25 + 16 * scale + 4
   return { x: width - w, y: 0, w, h: height }

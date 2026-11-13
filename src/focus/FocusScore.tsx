@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { DEFAULT_SESSION_NAME, saveFocus, type SessionMeta } from '../db'
 import { dismiss, getJob, startAnalysis, subscribe } from './jobs'
-import { clockOf, summarizeFocus, type FocusChoice, type FocusResult } from './types'
+import { clockOf, smoothedChoices, summarizeFocus, type FocusChoice, type FocusResult } from './types'
 import FramePreview from './FramePreview'
 import './FocusScore.css'
+
+const label = (choice: FocusChoice) => choice.replace('_', ' ')
+
+// The card whose timeline was used last. Arrow keys step through its intervals
+// only, so two open cards don't both move.
+let activeCard: string | null = null
 
 export default function FocusScore({ session, onChanged }: {
   session: SessionMeta; onChanged: () => void
@@ -11,6 +17,8 @@ export default function FocusScore({ session, onChanged }: {
   const [consent, setConsent] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<number | null>(null)
+  const detailsRef = useRef<HTMLDetailsElement>(null)
+  const timelineRef = useRef<HTMLDivElement>(null)
   // The job lives in jobs.ts, so it keeps going while this card is unmounted.
   const job = useSyncExternalStore(subscribe, () => getJob(session.id))
   const progress = job?.status === 'running' ? job.progress : null
@@ -23,8 +31,32 @@ export default function FocusScore({ session, onChanged }: {
   }, [job, onChanged])
   const focus = session.focus?.task === session.task ? session.focus : undefined
   const summary = focus ? summarizeFocus(focus.samples) : null
+  const counted = focus ? smoothedChoices(focus.samples) : []
+  const sampleCount = focus?.samples.length ?? 0
   const named = session.task.trim() !== '' && session.task !== DEFAULT_SESSION_NAME
   const hasIpad = session.layout?.some(span => span.ipad !== null) ?? false
+
+  // Left and right arrows step to the previous or next interval once one is
+  // selected, unless you are typing somewhere.
+  useEffect(() => {
+    if (selected === null || sampleCount === 0) return
+    const current = selected
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      if (activeCard !== session.id || !detailsRef.current?.open) return
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.defaultPrevented) return
+      const target = e.target as HTMLElement | null
+      if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return
+      const next = Math.min(sampleCount - 1, Math.max(0, current + (e.key === 'ArrowRight' ? 1 : -1)))
+      e.preventDefault()
+      if (next === current) return
+      setSelected(next)
+      const segment = timelineRef.current?.children[next]
+      if (segment instanceof HTMLElement) segment.focus({ preventScroll: true })
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selected, sampleCount, session.id])
 
   function analyze() {
     setError(null)
@@ -36,7 +68,7 @@ export default function FocusScore({ session, onChanged }: {
   async function override(choice: FocusChoice) {
     if (!focus || selected === null) return
     const next: FocusResult = { ...focus, samples: focus.samples.map((s, i) =>
-      i === selected ? { ...s, choice } : s) }
+      i === selected ? { ...s, choice, corrected: true } : s) }
     try { await saveFocus(session.id, next); onChanged() }
     catch { setError('The correction could not be saved. Please try again.') }
   }
@@ -44,7 +76,7 @@ export default function FocusScore({ session, onChanged }: {
   if (!session.hasClip) return null
   return (
     <div className="focus-score">
-      <details>
+      <details ref={detailsRef}>
         <summary>
           <span aria-hidden="true">⚠</span>{' '}
           {summary?.percent !== null && summary?.percent !== undefined
@@ -53,27 +85,30 @@ export default function FocusScore({ session, onChanged }: {
         </summary>
         <p>Estimates visible activity related to “{session.task}”. It can miss paper work or misread your screen{hasIpad ? 's' : ''}.</p>
         {focus && summary && <>
-          <p>{summary.coverage}% of sampled time assessed · Clef-flash. Tap an interval to see what it judged and correct it.</p>
-          <div className="focus-timeline" aria-label="Sampled focus timeline">
+          <p>{summary.coverage}% of sampled time assessed · Clef-flash.
+            {summary.smoothed > 0 && ` ${summary.smoothed} one-sample blip${summary.smoothed === 1 ? '' : 's'} smoothed (${summary.rawPercent}% without smoothing).`}
+            {' '}Tap an interval to see what it judged and correct it; arrow keys step between intervals.</p>
+          <div className="focus-timeline" aria-label="Sampled focus timeline" ref={timelineRef}>
             {focus.samples.map((sample, i) => (
               <button key={sample.atMs} type="button"
-                className={`focus-segment ${sample.choice}`}
+                className={`focus-segment ${counted[i]}${counted[i] !== sample.choice ? ' smoothed' : ''}`}
                 style={{ flexGrow: sample.durationMs }}
-                aria-label={`${clockOf(sample.atMs)}: ${sample.choice.replace('_', ' ')}`}
+                aria-label={`${clockOf(sample.atMs)}: ${label(counted[i])}${counted[i] !== sample.choice ? ' (smoothed)' : ''}`}
                 aria-pressed={selected === i}
-                onClick={() => setSelected(i)} />
+                onClick={() => { activeCard = session.id; setSelected(i) }} />
             ))}
           </div>
-          <p className="focus-legend">Green: on task · muted: off task · amber: unclear</p>
+          <p className="focus-legend">Green: on task · muted: off task · amber: unclear · striped: a one-sample blip counted as its neighbours</p>
           {selected !== null && <div className="focus-correct">
             <span>{clockOf(focus.samples[selected].atMs)}</span>
             {(['on_task', 'off_task', 'unclear'] as const).map(choice =>
               <button type="button" key={choice} onClick={() => override(choice)}
-                aria-pressed={focus.samples[selected].choice === choice}>
-                {choice.replace('_', ' ')}
+                aria-pressed={counted[selected] === choice}>
+                {label(choice)}
               </button>)}
           </div>}
-          {selected !== null && <FramePreview session={session} sample={focus.samples[selected]} />}
+          {selected !== null && <FramePreview session={session} sample={focus.samples[selected]}
+            counted={counted[selected]} />}
         </>}
         {!named && <p>Name this session above so the checker knows what you were working on.</p>}
         {named && !progress && <>

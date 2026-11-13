@@ -4,7 +4,7 @@
 // sampleTime() and draw() below, so they cannot drift apart.
 
 import type { LayoutSpan, Rect } from '../media/timelapse'
-import { facesNear, frameAt, overlaps, spanAt, webcamStrip } from './layout'
+import { facesNear, frameAt, overlaps, padRect, spanAt, webcamStrip } from './layout'
 
 // Longest side of an image sent for scoring.
 export const MAX_SIDE = 1568
@@ -84,31 +84,41 @@ function crop(source: CanvasImageSource, area: Rect, target: HTMLCanvasElement) 
 
 // Draws what the model sees for the video's current frame. The canvases are
 // reused on every call, so read or copy them before the next one.
+//
+// No webcam pixel may leave this browser. Clips recorded since the layout was
+// saved say exactly where the face inset was drawn, so only that box (plus a
+// small pad) is hidden and the rest of the screen stays readable. Older clips
+// have no layout and no camera shape, so they keep the full-height strip down
+// the right edge, which covers an inset of any height.
 export function frameDrawer(video: HTMLVideoElement, layout: LayoutSpan[]) {
   const screen = document.createElement('canvas')
   const full = document.createElement('canvas')
   const ipad = document.createElement('canvas')
+  const knowsFace = layout.some(span => span.face !== null)
 
   function draw(time: number): SampleImages {
     const frame = frameAt(time)
     const span = spanAt(layout, frame)
+    // Every face that could be on screen near this frame: a seek can land a
+    // frame off, and the face moves when the iPad comes or goes.
+    const faces = facesNear(layout, frame).map(face =>
+      padRect(face, video.videoWidth, video.videoHeight))
     if (span?.ipad) {
-      // Laptop and iPad side by side. Hide every webcam area that could be in
-      // this frame, then cut out the two screens.
+      // Laptop and iPad side by side. Hide the faces, then cut out the two
+      // screens.
       full.width = video.videoWidth
       full.height = video.videoHeight
       const fctx = full.getContext('2d')!
       fctx.drawImage(video, 0, 0)
       fctx.fillStyle = 'black'
-      const faces = facesNear(layout, frame)
       for (const face of faces) fctx.fillRect(face.x, face.y, face.w, face.h)
       const screenScale = crop(full, span.screen, screen)
-      // Same strip as a laptop-only frame, so the laptop image matches what
-      // the model was checked on.
-      const strip = webcamStrip(screen.width, screen.height, screenScale)
-      const sctx = screen.getContext('2d')!
-      sctx.fillStyle = 'black'
-      sctx.fillRect(strip.x, strip.y, strip.w, strip.h)
+      if (!knowsFace) {
+        const strip = webcamStrip(screen.width, screen.height, screenScale)
+        const sctx = screen.getContext('2d')!
+        sctx.fillStyle = 'black'
+        sctx.fillRect(strip.x, strip.y, strip.w, strip.h)
+      }
       crop(full, span.ipad, ipad)
       return { screen, ipad, ipadMasked: faces.some(face => overlaps(face, span.ipad!)) }
     }
@@ -117,18 +127,17 @@ export function frameDrawer(video: HTMLVideoElement, layout: LayoutSpan[]) {
     screen.height = Math.round(video.videoHeight * scale)
     const ctx = screen.getContext('2d')!
     ctx.drawImage(video, 0, 0, screen.width, screen.height)
-    // The recorder uses a 25%-wide inset and a 16px margin in output pixels.
-    // Mask it before serializing: no webcam pixels leave this browser.
-    // Camera aspect ratio is not saved in old clips. Mask the full strip
-    // rather than guessing its height and leaking a tall webcam inset.
-    const strip = webcamStrip(screen.width, screen.height, scale)
     ctx.fillStyle = 'black'
-    ctx.fillRect(strip.x, strip.y, strip.w, strip.h)
-    // A seek can land on the next frame (the muxer rounds timestamps down),
-    // and that frame may already be side by side with the face over the
-    // laptop, outside the strip. Hide every face near this frame too.
-    for (const face of facesNear(layout, frame)) {
-      ctx.fillRect(face.x * scale, face.y * scale, face.w * scale, face.h * scale)
+    if (!knowsFace) {
+      // The recorder uses a 25%-wide inset and a 16px margin in output pixels.
+      const strip = webcamStrip(screen.width, screen.height, scale)
+      ctx.fillRect(strip.x, strip.y, strip.w, strip.h)
+    }
+    for (const face of faces) {
+      // Round outwards so scaling never leaves a sliver of the inset.
+      const x = Math.floor(face.x * scale)
+      const y = Math.floor(face.y * scale)
+      ctx.fillRect(x, y, Math.ceil((face.x + face.w) * scale) - x, Math.ceil((face.y + face.h) * scale) - y)
     }
     return { screen, ipad: null, ipadMasked: false }
   }
