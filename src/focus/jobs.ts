@@ -44,7 +44,8 @@ export function startAnalysis(id: string, task: string, elapsedMs: number, layou
       const clip = await getClip(id)
       if (!clip) throw new Error('This session has no recording to analyze.')
       const result = await analyzeFocus(clip, task, elapsedMs,
-        (done, total) => set(id, { status: 'running', progress: `Analyzing ${done}/${total}…`, cancel }),
+        (done, total, phase) => set(id, { status: 'running', cancel, progress: phase === 'score'
+          ? `Analyzing ${done}/${total}…` : `Rechecking off-task intervals ${done}/${total}…` }),
         abort.signal, layout)
       abort.signal.throwIfAborted()
       await saveFocus(id, result)

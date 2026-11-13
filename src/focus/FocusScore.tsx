@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { DEFAULT_SESSION_NAME, saveFocus, type SessionMeta } from '../db'
 import { dismiss, getJob, startAnalysis, subscribe } from './jobs'
-import { clockOf, smoothedChoices, summarizeFocus, type FocusChoice, type FocusResult } from './types'
+import {
+  clockOf, firstPass, matchedAnchor, needsRecheck, smoothedChoices, summarizeFocus,
+  type FocusChoice, type FocusResult,
+} from './types'
 import FramePreview from './FramePreview'
 import './FocusScore.css'
 
@@ -32,6 +35,10 @@ export default function FocusScore({ session, onChanged }: {
   const focus = session.focus?.task === session.task ? session.focus : undefined
   const summary = focus ? summarizeFocus(focus.samples) : null
   const counted = focus ? smoothedChoices(focus.samples) : []
+  // Intervals the second pass matched to on-task work, and the estimate without them.
+  const matched = focus ? focus.samples.filter(matchedAnchor).length : 0
+  const withoutRecheck = focus && matched > 0 ? summarizeFocus(firstPass(focus.samples)).percent : null
+  const unrechecked = focus ? focus.samples.some(needsRecheck) : false
   const sampleCount = focus?.samples.length ?? 0
   const named = session.task.trim() !== '' && session.task !== DEFAULT_SESSION_NAME
   const hasIpad = session.layout?.some(span => span.ipad !== null) ?? false
@@ -87,18 +94,21 @@ export default function FocusScore({ session, onChanged }: {
         {focus && summary && <>
           <p>{summary.coverage}% of sampled time assessed · Clef-flash.
             {summary.smoothed > 0 && ` ${summary.smoothed} one-sample blip${summary.smoothed === 1 ? '' : 's'} smoothed (${summary.rawPercent}% without smoothing).`}
+            {matched > 0 && ` ${matched} interval${matched === 1 ? '' : 's'} first called off task matched your on-task work in this session, so ${matched === 1 ? 'it counts' : 'they count'} as on task (${withoutRecheck}% without this recheck).`}
+            {focus.anchors?.atMs.length === 0 && unrechecked && ' Off-task intervals were not rechecked: no interval was confidently on task to compare them with.'}
+            {!focus.anchors && unrechecked && ' Analyzed before off-task intervals were rechecked against your on-task work; analyze again to recheck them.'}
             {' '}Tap an interval to see what it judged and correct it; arrow keys step between intervals.</p>
           <div className="focus-timeline" aria-label="Sampled focus timeline" ref={timelineRef}>
             {focus.samples.map((sample, i) => (
               <button key={sample.atMs} type="button"
-                className={`focus-segment ${counted[i]}${counted[i] !== sample.choice ? ' smoothed' : ''}`}
+                className={`focus-segment ${counted[i]}${counted[i] !== sample.choice ? ' smoothed' : ''}${matchedAnchor(sample) && counted[i] === 'on_task' ? ' matched' : ''}`}
                 style={{ flexGrow: sample.durationMs }}
-                aria-label={`${clockOf(sample.atMs)}: ${label(counted[i])}${counted[i] !== sample.choice ? ' (smoothed)' : ''}`}
+                aria-label={`${clockOf(sample.atMs)}: ${label(counted[i])}${counted[i] !== sample.choice ? ' (smoothed)' : ''}${matchedAnchor(sample) && sample.anchor ? ` (matched your work at ${clockOf(sample.anchor.atMs)})` : ''}`}
                 aria-pressed={selected === i}
                 onClick={() => { activeCard = session.id; setSelected(i) }} />
             ))}
           </div>
-          <p className="focus-legend">Green: on task · muted: off task · amber: unclear · striped: a one-sample blip counted as its neighbours</p>
+          <p className="focus-legend">Green: on task · muted: off task · amber: unclear · striped: a one-sample blip counted as its neighbours{matched > 0 && ' · dotted: first called off task, then matched your on-task work'}</p>
           {selected !== null && <div className="focus-correct">
             <span>{clockOf(focus.samples[selected].atMs)}</span>
             {(['on_task', 'off_task', 'unclear'] as const).map(choice =>
@@ -115,7 +125,7 @@ export default function FocusScore({ session, onChanged }: {
           {!consent ? <button type="button" className="history-btn" onClick={() => setConsent(true)}>
             {focus ? 'Analyze again' : 'Analyze focus'}
           </button> : <div className="focus-consent">
-            <p>This sends sampled screenshots{hasIpad ? ' of your laptop and iPad' : ''} and the session name to Cloudflare for analysis. The webcam area is hidden. Cloudflare lists zero data retention for this model. Results stay on this device.</p>
+            <p>This sends sampled screenshots{hasIpad ? ' of your laptop and iPad' : ''} and the session name to Cloudflare for analysis. Screenshots it calls off task are sent again beside one of your on-task ones for a second look. The webcam area is hidden. Cloudflare lists zero data retention for this model. Results stay on this device.</p>
             <button type="button" className="history-btn" onClick={analyze}>Analyze</button>{' '}
             <button type="button" className="history-btn" onClick={() => setConsent(false)}>Cancel</button>
           </div>}

@@ -9,6 +9,7 @@
 .focus-segment.on_task { background: #457860; }
 .focus-segment.unclear { background: #b18a48; }
 .focus-segment.smoothed { background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgba(0, 0, 0, .38) 3px 5px); }
+.focus-segment.matched { background-image: radial-gradient(circle, rgba(255, 255, 255, .5) 1px, transparent 1.4px); background-size: 4px 4px; background-position: center; }
 .focus-segment[aria-pressed=true] { outline: 2px solid var(--text-h); outline-offset: 2px; z-index: 1; }
 .focus-legend { font-size: 10px; }
 .focus-correct { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
@@ -25,3 +26,4 @@
 .focus-frame-label { font-size: 10px; }
 .focus-frame-pane.decided .focus-frame-label { color: var(--accent); }
 .focus-frame-note { font-size: 10px; }
+.focus-frame-pane.anchor img { border-style: dashed; }

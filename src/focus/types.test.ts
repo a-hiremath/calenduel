@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  countsAsSameWork, firstPass, matchedAnchor, nearestAnchor, needsRecheck, pickAnchors,
   sampleIntervals, smoothedChoices, summarizeFocus, type FocusChoice, type FocusSample,
 } from './types'
 
@@ -72,5 +73,90 @@ describe('sampling', () => {
       expect(intervals.reduce((sum, s) => sum + s.durationMs, 0)).toBe(elapsed)
     }
     expect(sampleIntervals(NaN)).toEqual([])
+  })
+})
+
+// '+' on task, '-' off task, '?' unclear; `sure` is p(on_task) per sample.
+const scored = (labels: string, sure: number[], ipad = ''): FocusSample[] => [...labels].map((c, i) => {
+  const choice: FocusChoice = c === '+' ? 'on_task' : c === '-' ? 'off_task' : 'unclear'
+  return {
+    atMs: i * 15_000, durationMs: 15_000, choice, originalChoice: choice,
+    source: ipad[i] === 'i' ? 'ipad' : 'laptop',
+    probabilities: { on_task: sure[i], off_task: 1 - sure[i], unclear: 0 },
+  }
+})
+
+describe('second pass: choosing anchors', () => {
+  it('takes the surest on-task sample from each third of the session', () => {
+    const samples = scored('++-+++-++', [.8, .9, .1, .76, .85, .8, .2, .88, .88])
+    expect(pickAnchors(samples)).toEqual([1, 4, 7]) // a tie keeps the earlier one
+  })
+  it('skips a third with nothing sure enough, and never picks an off-task sample', () => {
+    expect(pickAnchors(scored('+--+-+', [.74, .1, .1, .9, .2, .6]))).toEqual([3])
+    expect(pickAnchors(scored('---', [.9, .9, .9]))).toEqual([])
+    expect(pickAnchors([])).toEqual([])
+  })
+  it('prefers a sample the laptop decided over a surer one the iPad decided', () => {
+    const off = [.1, .1, .1, .1]
+    expect(pickAnchors(scored('++----', [.89, .76, ...off], 'i '))).toEqual([1])
+    // With no laptop sample sure enough, an iPad one still serves.
+    expect(pickAnchors(scored('++----', [.89, .7, ...off], 'i '))).toEqual([0])
+  })
+  it('compares each off-task sample with the nearest anchor, the earlier on a tie', () => {
+    const samples = scored('+--+---+', [.9, .1, .1, .9, .1, .1, .1, .9])
+    expect(nearestAnchor(samples, [0, 3, 7], 1)).toBe(0)
+    expect(nearestAnchor(samples, [0, 3, 7], 2)).toBe(3)
+    expect(nearestAnchor(samples, [0, 3, 7], 5)).toBe(3) // 2 from 3, 2 from 7
+    expect(nearestAnchor(samples, [0, 3, 7], 6)).toBe(7)
+  })
+  it('rechecks only what the laptop called off task', () => {
+    const samples = scored('-?-+', [.1, .1, .1, .9], '  i ')
+    expect(samples.map(needsRecheck)).toEqual([true, false, false, false])
+  })
+})
+
+describe('second pass: results', () => {
+  const matched = (s: FocusSample): FocusSample => ({ ...s, choice: 'on_task', originalChoice: 'on_task',
+    anchor: { atMs: 0, choice: 'same_work' } })
+  it('counts a matched sample as on task, and reports the estimate without it', () => {
+    const samples = scored('++---', [.9, .9, .1, .1, .1])
+    samples[2] = matched(samples[2])
+    samples[3] = { ...samples[3], anchor: { atMs: 0, choice: 'different' } }
+    expect(samples.map(matchedAnchor)).toEqual([false, false, true, false, false])
+    expect(summarizeFocus(samples).percent).toBe(60)
+    expect(summarizeFocus(firstPass(samples)).percent).toBe(40)
+  })
+  it('keeps a hand correction of a matched sample, before and after', () => {
+    const samples = scored('+-', [.9, .1])
+    samples[1] = { ...matched(samples[1]), choice: 'off_task', corrected: true }
+    expect(matchedAnchor(samples[1])).toBe(false)
+    expect(firstPass(samples)[1]).toMatchObject({ choice: 'off_task', originalChoice: 'off_task' })
+    samples[1] = { ...samples[1], choice: 'unclear' }
+    expect(firstPass(samples)[1].choice).toBe('unclear')
+  })
+  it('smooths a matched sample like any other on-task label', () => {
+    // A matched sample alone inside a distraction is still a blip.
+    const samples = scored('---+---', [.1, .1, .1, .1, .1, .1, .1])
+    samples[3] = matched(samples[3])
+    expect(smoothedChoices(samples)[3]).toBe('off_task')
+  })
+})
+
+describe('second pass: how sure "same work" must be', () => {
+  const p = (same: number, different: number) => ({ same_work: same, different, unclear: 1 - same - different })
+  it('needs at least even odds, not just the top answer', () => {
+    expect(countsAsSameWork('same_work', p(.46, .44))).toBe(false) // the one leak in testing
+    expect(countsAsSameWork('same_work', p(.5, .4))).toBe(true)
+    expect(countsAsSameWork('same_work', p(.76, .2))).toBe(true)
+    expect(countsAsSameWork('different', p(.1, .8))).toBe(false)
+    expect(countsAsSameWork('same_work')).toBe(false)
+  })
+  it('leaves an unsure match off task and out of the recheck count', () => {
+    const unsure: FocusSample = { atMs: 0, durationMs: 15_000, choice: 'off_task', originalChoice: 'off_task',
+      anchor: { atMs: 15_000, choice: 'same_work', probabilities: p(.46, .44) } }
+    expect(matchedAnchor(unsure)).toBe(false)
+    expect(firstPass([unsure])).toEqual([unsure])
+    // Corrected by hand to on task, it is the person's label, not a match.
+    expect(matchedAnchor({ ...unsure, choice: 'on_task', corrected: true })).toBe(false)
   })
 })

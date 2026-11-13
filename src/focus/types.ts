@@ -1,4 +1,6 @@
 export type FocusChoice = 'on_task' | 'off_task' | 'unclear'
+// The second pass's answer: is this the same work as an on-task sample?
+export type AnchorChoice = 'same_work' | 'different' | 'unclear'
 
 export interface FocusSample {
   atMs: number
@@ -14,6 +16,11 @@ export interface FocusSample {
   probabilities?: Record<FocusChoice, number>
   // The person set this label by hand. Smoothing never changes it.
   corrected?: boolean
+  // The second pass. The first pass called this sample off task from the
+  // laptop, so it was compared with the on-task sample at `atMs`. When the
+  // model judged it the same work, `choice` and `originalChoice` are on_task;
+  // `probabilities` above stay the first pass's.
+  anchor?: { atMs: number; choice: AnchorChoice; probabilities?: Record<AnchorChoice, number> }
 }
 
 export interface FocusResult {
@@ -25,6 +32,9 @@ export interface FocusResult {
   // What hid the webcam: only the recorded face box, or (clips without a
   // layout, and results from before the face-only mask) the full right strip.
   mask?: 'face' | 'strip'
+  // The second pass ran: `atMs` lists the on-task samples it compared
+  // against, empty when none was sure enough. Absent in older results.
+  anchors?: { rubric: 'anchor-v1'; atMs: number[] }
   samples: FocusSample[]
 }
 
@@ -94,6 +104,79 @@ export function summarizeFocus(samples: FocusSample[]) {
     rawPercent: percentOf(raw.onMs, raw.assessedMs),
     smoothed: choices.filter((choice, i) => choice !== samples[i].choice).length,
   }
+}
+
+// The second pass compares against at most this many samples, one from each
+// equal part of the session, and only ones the model was at least this sure
+// were on task. Clef's probabilities top out near 0.9.
+export const ANCHOR_COUNT = 3
+export const ANCHOR_MIN_SURE = 0.75
+// "Same work" counts only when the model gives it at least even odds. With
+// three answers it can win at 0.46, and in testing (2026-11-13) the one
+// different project it let through did: 0.46 against 0.44. Same-work answers
+// on real matches were 0.62 or more, different activities 0.46 or less.
+export const SAME_WORK_MIN = 0.5
+
+export function countsAsSameWork(choice: AnchorChoice, probabilities?: Record<AnchorChoice, number>): boolean {
+  return choice === 'same_work' && (probabilities?.same_work ?? 0) >= SAME_WORK_MIN
+}
+
+// The samples the second pass compares against, as indexes in time order. In
+// each third of the session, the on-task sample the model was surest of. A
+// sample the laptop decided beats one the iPad decided: the laptop screen is
+// what gets compared, and only then was it the screen that was judged.
+export function pickAnchors(samples: FocusSample[]): number[] {
+  const rank = (s: FocusSample) => (s.source === 'ipad' ? 0 : 10) + (s.probabilities?.on_task ?? 0)
+  const anchors: number[] = []
+  for (let part = 0; part < ANCHOR_COUNT; part++) {
+    const from = Math.floor(part * samples.length / ANCHOR_COUNT)
+    const to = Math.floor((part + 1) * samples.length / ANCHOR_COUNT)
+    let best = -1
+    for (let i = from; i < to; i++) {
+      const s = samples[i]
+      if (s.originalChoice !== 'on_task' || (s.probabilities?.on_task ?? 0) < ANCHOR_MIN_SURE) continue
+      if (best < 0 || rank(s) > rank(samples[best])) best = i
+    }
+    if (best >= 0) anchors.push(best)
+  }
+  return anchors
+}
+
+// The second pass rechecks what the first called off task from the laptop.
+// An iPad that decided off task stays off: laptop frames say nothing about it.
+export function needsRecheck(sample: FocusSample): boolean {
+  return sample.originalChoice === 'off_task' && sample.source !== 'ipad'
+}
+
+// The anchor nearest in time to sample `i`, the earlier one on a tie. Work
+// drifts over a session (code, then the debugger, then notes), so the
+// nearest is the likeliest to show the same stage of it.
+export function nearestAnchor(samples: FocusSample[], anchors: number[], i: number): number {
+  let best = anchors[0]
+  for (const a of anchors) {
+    if (Math.abs(samples[a].atMs - samples[i].atMs) < Math.abs(samples[best].atMs - samples[i].atMs)) best = a
+  }
+  return best
+}
+
+// The second pass turned this first-pass off-task label into on task.
+function flipped(sample: FocusSample): boolean {
+  return sample.anchor?.choice === 'same_work' && sample.originalChoice === 'on_task'
+}
+
+// The first pass called this off task and the second matched it to on-task
+// work, and the person has not changed it since.
+export function matchedAnchor(sample: FocusSample): boolean {
+  return flipped(sample) && sample.choice === 'on_task'
+}
+
+// The samples as the first pass left them, for the estimate without the
+// second pass. Hand corrections are kept.
+export function firstPass(samples: FocusSample[]): FocusSample[] {
+  return samples.map(s => !flipped(s) ? s : {
+    ...s, originalChoice: 'off_task',
+    choice: s.corrected || s.choice !== s.originalChoice ? s.choice : 'off_task',
+  })
 }
 
 // Cap long sessions at 240 observations. Each observation represents an equal
