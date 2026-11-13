@@ -27,3 +27,5 @@
 .focus-frame-pane.decided .focus-frame-label { color: var(--accent); }
 .focus-frame-note { font-size: 10px; }
 .focus-frame-pane.anchor img { border-style: dashed; }
+.recheck-all { font-size: 12px; color: var(--text); border: 1px solid var(--border-strong); border-radius: 6px; padding: .25rem .9rem .9rem; margin: 0 0 1rem; }
+.recheck-all p { line-height: 1.6; margin: .65rem 0; }

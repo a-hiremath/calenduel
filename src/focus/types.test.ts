@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  countsAsSameWork, firstPass, matchedAnchor, nearestAnchor, needsRecheck, pickAnchors,
+  countsAsSameWork, firstPass, matchedAnchor, nearestAnchor, needsRecheck, needsSecondPass, pickAnchors,
   sampleIntervals, smoothedChoices, summarizeFocus, type FocusChoice, type FocusSample,
 } from './types'
 
@@ -158,5 +158,33 @@ describe('second pass: how sure "same work" must be', () => {
     expect(firstPass([unsure])).toEqual([unsure])
     // Corrected by hand to on task, it is the person's label, not a match.
     expect(matchedAnchor({ ...unsure, choice: 'on_task', corrected: true })).toBe(false)
+  })
+})
+
+describe('rechecking a saved result', () => {
+  it('never rechecks or anchors on a label the person set', () => {
+    const samples = scored('+-+-', [.9, .1, .9, .1])
+    samples[0] = { ...samples[0], choice: 'off_task', corrected: true } // a confident on-task the person called off
+    samples[1] = { ...samples[1], corrected: true } // pinned off by hand
+    samples[3] = { ...samples[3], choice: 'on_task' } // changed the old way
+    expect(pickAnchors(samples)).toEqual([2])
+    expect(samples.map(needsRecheck)).toEqual([false, false, false, false])
+  })
+  it('skips two-screen samples from before the deciding screen was kept', () => {
+    const old: FocusSample = { atMs: 0, durationMs: 15_000, choice: 'off_task', originalChoice: 'off_task', ipad: true }
+    expect(needsRecheck(old)).toBe(false)
+    expect(needsRecheck({ ...old, source: 'laptop' })).toBe(true)
+    expect(needsRecheck({ ...old, ipad: undefined })).toBe(true) // laptop-only: the laptop decided
+  })
+  it('lists only current, unrechecked results with something to recheck', () => {
+    const focus = { task: 'p8', analyzedAt: 0, model: 'clef-flash' as const, rubric: 'task-v2' as const,
+      samples: scored('+-', [.9, .1]) }
+    const session = { task: 'p8', hasClip: true, focus }
+    expect(needsSecondPass(session)).toBe(true)
+    expect(needsSecondPass({ ...session, hasClip: false })).toBe(false)
+    expect(needsSecondPass({ ...session, task: 'renamed' })).toBe(false)
+    expect(needsSecondPass({ ...session, focus: { ...focus, anchors: { rubric: 'anchor-v1', atMs: [] } } })).toBe(false)
+    expect(needsSecondPass({ ...session, focus: { ...focus, samples: scored('++', [.9, .9]) } })).toBe(false)
+    expect(needsSecondPass({ task: 'p8', hasClip: true })).toBe(false)
   })
 })

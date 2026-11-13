@@ -121,12 +121,20 @@ export function countsAsSameWork(choice: AnchorChoice, probabilities?: Record<An
   return choice === 'same_work' && (probabilities?.same_work ?? 0) >= SAME_WORK_MIN
 }
 
+// The laptop screen decided this sample. Results from before `source` was
+// kept don't say which screen decided a two-screen sample, so those count as
+// not known to be the laptop.
+function laptopDecided(s: FocusSample): boolean {
+  return s.ipad ? s.source === 'laptop' : s.source !== 'ipad'
+}
+
 // The samples the second pass compares against, as indexes in time order. In
 // each third of the session, the on-task sample the model was surest of. A
 // sample the laptop decided beats one the iPad decided: the laptop screen is
-// what gets compared, and only then was it the screen that was judged.
+// what gets compared, and only then was it the screen that was judged. A
+// sample the person changed to another label is never an anchor.
 export function pickAnchors(samples: FocusSample[]): number[] {
-  const rank = (s: FocusSample) => (s.source === 'ipad' ? 0 : 10) + (s.probabilities?.on_task ?? 0)
+  const rank = (s: FocusSample) => (laptopDecided(s) ? 10 : 0) + (s.probabilities?.on_task ?? 0)
   const anchors: number[] = []
   for (let part = 0; part < ANCHOR_COUNT; part++) {
     const from = Math.floor(part * samples.length / ANCHOR_COUNT)
@@ -134,7 +142,8 @@ export function pickAnchors(samples: FocusSample[]): number[] {
     let best = -1
     for (let i = from; i < to; i++) {
       const s = samples[i]
-      if (s.originalChoice !== 'on_task' || (s.probabilities?.on_task ?? 0) < ANCHOR_MIN_SURE) continue
+      if (s.originalChoice !== 'on_task' || s.choice !== 'on_task' ||
+        (s.probabilities?.on_task ?? 0) < ANCHOR_MIN_SURE) continue
       if (best < 0 || rank(s) > rank(samples[best])) best = i
     }
     if (best >= 0) anchors.push(best)
@@ -144,8 +153,18 @@ export function pickAnchors(samples: FocusSample[]): number[] {
 
 // The second pass rechecks what the first called off task from the laptop.
 // An iPad that decided off task stays off: laptop frames say nothing about it.
+// A label the person set or pinned by hand is theirs and is never rechecked.
 export function needsRecheck(sample: FocusSample): boolean {
-  return sample.originalChoice === 'off_task' && sample.source !== 'ipad'
+  return sample.originalChoice === 'off_task' && sample.choice === 'off_task' &&
+    !sample.corrected && laptopDecided(sample)
+}
+
+// One-time (2026-11-13): the sessions whose saved result predates the second
+// pass and has something for it to recheck. Remove with RecheckAll.tsx.
+export function needsSecondPass(session: { task: string; hasClip: boolean; focus?: FocusResult }): boolean {
+  const focus = session.focus
+  return session.hasClip && !!focus && focus.task === session.task && !focus.anchors &&
+    focus.samples.some(needsRecheck)
 }
 
 // The anchor nearest in time to sample `i`, the earlier one on a tie. Work

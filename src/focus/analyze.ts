@@ -48,17 +48,14 @@ function rounded<K extends string>(value: unknown, keys: K[]): Record<K, number>
 
 export type FocusPhase = 'score' | 'recheck'
 
-export async function analyzeFocus(
-  clip: Blob, task: string, elapsedMs: number,
-  progress: (done: number, total: number, phase: FocusPhase) => void,
-  signal: AbortSignal,
-  layout: LayoutSpan[] = [],
-): Promise<FocusResult> {
+// Signs requests to the focus worker, refreshing the token every minute, and
+// paces them below the worker's per-user limit.
+async function focusClient(signal: AbortSignal) {
   const { focusToken } = await import('../compete/api')
   let token = await focusToken()
   if (!token) throw new Error('Sign in from Compete before analyzing a session.')
   let tokenCheckedAt = Date.now()
-  async function post(path: string, body: string): Promise<unknown> {
+  return async function post(path: string, body: string): Promise<unknown> {
     if (Date.now() - tokenCheckedAt > 60_000) {
       token = await focusToken()
       if (!token) throw new Error('Sign in again to finish analysis.')
@@ -77,6 +74,16 @@ export async function analyzeFocus(
     await new Promise<void>(resolve => setTimeout(resolve, PACE_MS))
     return answer
   }
+}
+type Post = Awaited<ReturnType<typeof focusClient>>
+
+export async function analyzeFocus(
+  clip: Blob, task: string, elapsedMs: number,
+  progress: (done: number, total: number, phase: FocusPhase) => void,
+  signal: AbortSignal,
+  layout: LayoutSpan[] = [],
+): Promise<FocusResult> {
+  const post = await focusClient(signal)
   const { video, close } = await openClip(clip)
   const drawer = frameDrawer(video, layout)
   const small = document.createElement('canvas')
@@ -124,46 +131,74 @@ export async function analyzeFocus(
       progress(result.samples.length, intervals.length, 'score')
     }
 
-    // The second pass. "Is this the declared task?" asks one frame to prove
-    // which assignment it belongs to, so the first pass leans on words it can
-    // see, such as the session name in a file path, and calls a debugger or
-    // program output off task. Each laptop frame it called off task is now
-    // compared with the nearest frame from this session it was sure was on
-    // task. The same work counts as on task; a different activity stays off.
-    const { samples } = result
-    const anchors = pickAnchors(samples)
-    result.anchors = { rubric: 'anchor-v1', atMs: anchors.map(a => samples[a].atMs) }
-    const recheck = anchors.length ? samples.flatMap((s, i) => needsRecheck(s) ? [i] : []) : []
-    const anchorImages = new Map<number, string>()
-    const screenAt = async (atMs: number) => {
-      const time = sampleTime(video.duration, atMs, elapsedMs)
-      await seekTo(video, time)
-      return drawer.draw(time).screen.toDataURL('image/jpeg', JPEG_QUALITY)
-    }
-    progress(0, recheck.length, 'recheck')
-    for (const [done, i] of recheck.entries()) {
-      signal.throwIfAborted()
-      const a = nearestAnchor(samples, anchors, i)
-      if (!anchorImages.has(a)) anchorImages.set(a, await screenAt(samples[a].atMs))
-      const answer = await post('/compare', JSON.stringify({
-        task, anchor: anchorImages.get(a), image: await screenAt(samples[i].atMs),
-      })) as { choice: AnchorChoice; probabilities?: unknown }
-      if (!ANCHOR_CHOICES.includes(answer.choice)) {
-        throw new Error('The model returned an unreadable result.')
-      }
-      const probabilities = rounded(answer.probabilities, ANCHOR_CHOICES)
-      samples[i] = {
-        ...samples[i],
-        ...(countsAsSameWork(answer.choice, probabilities) ? { choice: 'on_task', originalChoice: 'on_task' } : {}),
-        anchor: { atMs: samples[a].atMs, choice: answer.choice, ...(probabilities ? { probabilities } : {}) },
-      }
-      progress(done + 1, recheck.length, 'recheck')
-    }
+    await secondPass(result, video, drawer, elapsedMs, post, progress, signal)
     return result
   } finally {
     close()
     drawer.dispose()
     small.width = 0
     small.height = 0
+  }
+}
+
+// The second pass, on a finished first pass; changes `result` in place.
+// "Is this the declared task?" asks one frame to prove which assignment it
+// belongs to, so the first pass leans on words it can see, such as the
+// session name in a file path, and calls a debugger or program output off
+// task. Each laptop frame it called off task is now compared with the nearest
+// frame from this session it was sure was on task. The same work counts as on
+// task; a different activity stays off.
+async function secondPass(
+  result: FocusResult, video: HTMLVideoElement, drawer: ReturnType<typeof frameDrawer>,
+  elapsedMs: number, post: Post,
+  progress: (done: number, total: number, phase: FocusPhase) => void, signal: AbortSignal,
+) {
+  const { samples } = result
+  const anchors = pickAnchors(samples)
+  result.anchors = { rubric: 'anchor-v1', atMs: anchors.map(a => samples[a].atMs) }
+  const recheck = anchors.length ? samples.flatMap((s, i) => needsRecheck(s) ? [i] : []) : []
+  const anchorImages = new Map<number, string>()
+  const screenAt = async (atMs: number) => {
+    const time = sampleTime(video.duration, atMs, elapsedMs)
+    await seekTo(video, time)
+    return drawer.draw(time).screen.toDataURL('image/jpeg', JPEG_QUALITY)
+  }
+  progress(0, recheck.length, 'recheck')
+  for (const [done, i] of recheck.entries()) {
+    signal.throwIfAborted()
+    const a = nearestAnchor(samples, anchors, i)
+    if (!anchorImages.has(a)) anchorImages.set(a, await screenAt(samples[a].atMs))
+    const answer = await post('/compare', JSON.stringify({
+      task: result.task, anchor: anchorImages.get(a), image: await screenAt(samples[i].atMs),
+    })) as { choice: AnchorChoice; probabilities?: unknown }
+    if (!ANCHOR_CHOICES.includes(answer.choice)) {
+      throw new Error('The model returned an unreadable result.')
+    }
+    const probabilities = rounded(answer.probabilities, ANCHOR_CHOICES)
+    samples[i] = {
+      ...samples[i],
+      ...(countsAsSameWork(answer.choice, probabilities) ? { choice: 'on_task', originalChoice: 'on_task' } : {}),
+      anchor: { atMs: samples[a].atMs, choice: answer.choice, ...(probabilities ? { probabilities } : {}) },
+    }
+    progress(done + 1, recheck.length, 'recheck')
+  }
+}
+
+// One-time (2026-11-13): run only the second pass on a result saved before
+// it existed. Hand corrections stay as they are. Remove with RecheckAll.tsx.
+export async function recheckFocus(
+  clip: Blob, focus: FocusResult, elapsedMs: number, layout: LayoutSpan[],
+  progress: (done: number, total: number) => void, signal: AbortSignal,
+): Promise<FocusResult> {
+  const post = await focusClient(signal)
+  const { video, close } = await openClip(clip)
+  const drawer = frameDrawer(video, layout)
+  try {
+    const result: FocusResult = { ...focus, samples: focus.samples.map(s => ({ ...s })) }
+    await secondPass(result, video, drawer, elapsedMs, post, (done, total) => progress(done, total), signal)
+    return result
+  } finally {
+    close()
+    drawer.dispose()
   }
 }

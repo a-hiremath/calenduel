@@ -11,6 +11,7 @@ import { downloadBlob, timelapseName } from './media/share'
 import './History.css'
 import FocusScore from './focus/FocusScore'
 import SubjectField, { SubjectOptions } from './subjects/SubjectField'
+import RecheckAll from './focus/RecheckAll' // one-time, 2026-11-13
 import { SUBJECTS_CHANGED, savedNames, sortSessions } from './subjects/sort'
 import { knownSubjects } from './subjects/subjects'
 
@@ -199,6 +200,8 @@ export default function History() {
       {sessions !== null && sessions.length === 0 && (
         <p className="history-hint">No sessions yet. Complete a study session to see it here.</p>
       )}
+
+      {sessions !== null && <RecheckAll sessions={sessions} />}
 
       {sessions !== null && sessions.length > 0 && (
         <ul className="history-list">
