@@ -167,3 +167,41 @@
 .account-link:hover {
   color: var(--text-h);
 }
+
+/* ── Feedback ─────────────────────────────────────────────────── */
+
+.feedback-input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-h);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.feedback-input::placeholder {
+  color: var(--text-mute);
+}
+
+.feedback-input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.feedback-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+}
+
+/* Sits beside the button, so it drops the note's top margin. */
+.feedback-sent {
+  margin-top: 0;
+}

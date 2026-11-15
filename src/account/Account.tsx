@@ -8,6 +8,7 @@ import './Account.css'
 // Stats come from this device and need no sign-in, so only the profile half
 // waits on the auth and database SDK.
 const ProfileSection = lazy(() => import('./ProfileSection'))
+const FeedbackSection = lazy(() => import('./FeedbackSection'))
 
 function days(n: number): string {
   return `${n} day${n === 1 ? '' : 's'}`
@@ -104,6 +105,10 @@ export default function Account() {
         <h2>Subjects</h2>
         <SubjectTally />
       </section>
+
+      <Suspense fallback={null}>
+        <FeedbackSection />
+      </Suspense>
     </main>
   )
 }

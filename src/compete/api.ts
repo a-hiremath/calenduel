@@ -213,6 +213,16 @@ export async function syncSessions(): Promise<number> {
   return results.filter((r) => r.error && r.error.code !== UNIQUE_VIOLATION).length
 }
 
+// The database only accepts this much, so the box stops there too.
+export const MAX_FEEDBACK_LENGTH = 2000
+
+// Write-only: the database takes the message and the sender from the token,
+// and nobody can read feedback back through the app.
+export async function sendFeedback(message: string): Promise<void> {
+  const { error } = await neon.from('feedback').insert({ message: message.trim() })
+  if (error) fail(error)
+}
+
 // Takes a deleted session out of the competition. Throws on failure so the
 // caller can keep the local copy rather than leave a phantom score behind.
 export async function deleteUploadedSession(id: string): Promise<void> {
